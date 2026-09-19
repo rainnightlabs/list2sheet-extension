@@ -6,6 +6,8 @@ const PREVIEW_ROW_LIMIT = 12;
 let datasets = [];
 let currentIndex = 0;
 let isPro = false;
+let currentPageHost = "";
+const RECIPE_STORAGE_KEY = "list2sheet_recipes_v1";
 
 const els = {
   scan: document.querySelector("#scanButton"),
@@ -39,7 +41,10 @@ const els = {
   cleanTracking: document.querySelector("#cleanTracking"),
   applyCleanup: document.querySelector("#applyCleanup"),
   resetCleanup: document.querySelector("#resetCleanup"),
-  xlsx: document.querySelector("#xlsxButton")
+  xlsx: document.querySelector("#xlsxButton"),
+  saveRecipe: document.querySelector("#saveRecipeButton"),
+  recipeStatus: document.querySelector("#recipeStatus"),
+  forgetRecipe: document.querySelector("#forgetRecipeButton")
 };
 
 function showStatus(message, type="") {
@@ -54,6 +59,113 @@ function hideStatus() {
 
 function normalizeCell(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function datasetKind(dataset) {
+  if (!dataset) return "dataset";
+  if (dataset.type === "table") return "table";
+  return String(dataset.label || "repeated").split("·")[0].trim().toLowerCase();
+}
+
+function recipeKey(dataset) {
+  const headers = Array.isArray(dataset?.headers) ? dataset.headers.join("¦") : "";
+  return [currentPageHost || "unknown", dataset?.type || "unknown", datasetKind(dataset), headers].join("|");
+}
+
+async function loadRecipeMap() {
+  const result = await chrome.storage.local.get(RECIPE_STORAGE_KEY);
+  return result[RECIPE_STORAGE_KEY] || {};
+}
+
+async function saveRecipeMap(map) {
+  await chrome.storage.local.set({[RECIPE_STORAGE_KEY]: map});
+}
+
+function currentCleanupOptions() {
+  return {
+    removeDuplicates: els.cleanDuplicates.checked,
+    removeEmpty: els.cleanEmpty.checked,
+    removeMissingTitle: els.cleanMissingTitle.checked,
+    normalizePrice: els.cleanPrice.checked,
+    stripTracking: els.cleanTracking.checked
+  };
+}
+
+function defaultCleanupOptions() {
+  return {
+    removeDuplicates: true,
+    removeEmpty: true,
+    removeMissingTitle: false,
+    normalizePrice: true,
+    stripTracking: false
+  };
+}
+
+function applyCleanupControls(options = defaultCleanupOptions()) {
+  els.cleanDuplicates.checked = options.removeDuplicates !== false;
+  els.cleanEmpty.checked = options.removeEmpty !== false;
+  els.cleanMissingTitle.checked = options.removeMissingTitle === true;
+  els.cleanPrice.checked = options.normalizePrice !== false;
+  els.cleanTracking.checked = options.stripTracking === true;
+}
+
+function applyRecipeToDataset(dataset, recipe) {
+  if (!dataset || !recipe) return false;
+
+  const savedColumns = Array.isArray(recipe.columns) ? recipe.columns : [];
+  const currentSources = new Set(dataset.headers || []);
+  const compatible = savedColumns.length &&
+    savedColumns.every(column => currentSources.has(column.source));
+
+  if (compatible) {
+    dataset.columnConfig = savedColumns.map((column,index) => ({
+      source: column.source,
+      label: column.label || column.source,
+      enabled: column.enabled !== false,
+      order: Number.isFinite(column.order) ? column.order : index
+    }));
+  }
+
+  dataset.cleanupOptions = {...defaultCleanupOptions(), ...(recipe.cleanup || {})};
+  dataset.rows = cleanupDataset(dataset, dataset.cleanupOptions);
+  dataset.appliedRecipeKey = recipe.key || recipeKey(dataset);
+  return true;
+}
+
+async function applySavedRecipes() {
+  const map = await loadRecipeMap();
+  let applied = 0;
+  for (const dataset of datasets) {
+    const key = recipeKey(dataset);
+    const recipe = map[key];
+    if (recipe && applyRecipeToDataset(dataset, recipe)) applied++;
+  }
+  return applied;
+}
+
+async function hasSavedRecipe(dataset = activeDataset()) {
+  if (!dataset) return false;
+  const map = await loadRecipeMap();
+  return Boolean(map[recipeKey(dataset)]);
+}
+
+async function updateRecipeUi(dataset = activeDataset()) {
+  if (!dataset || !els.saveRecipe) return;
+  const saved = await hasSavedRecipe(dataset);
+  els.saveRecipe.textContent = saved ? "Saved ✓" : "Save settings";
+  els.saveRecipe.classList.toggle("saved", saved);
+  els.recipeStatus.textContent = saved
+    ? `Saved for ${currentPageHost}. It will auto-apply after the next scan.`
+    : "Settings are not saved for this dataset.";
+  els.forgetRecipe.hidden = !saved;
+}
+
+function markRecipeDirty() {
+  const dataset = activeDataset();
+  if (!dataset || !els.saveRecipe) return;
+  els.saveRecipe.textContent = "Save settings";
+  els.saveRecipe.classList.remove("saved");
+  els.recipeStatus.textContent = "Settings changed. Save to reuse them after the next scan.";
 }
 
 function extractPageDatasets() {
@@ -346,6 +458,11 @@ async function scanCurrentPage() {
   try {
     const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
     if (!tab?.id) throw new Error("No active tab found.");
+    try {
+      currentPageHost = new URL(tab.url || "").hostname.replace(/^www\./,"").toLowerCase();
+    } catch {
+      currentPageHost = "";
+    }
 
     const result = await chrome.scripting.executeScript({
       target:{tabId:tab.id},
@@ -355,8 +472,10 @@ async function scanCurrentPage() {
     datasets = result?.[0]?.result || [];
     datasets.forEach(dataset => {
       dataset.originalRows = dataset.rows.map(row => ({...row}));
+      dataset.cleanupOptions = defaultCleanupOptions();
       resetColumnConfig(dataset);
     });
+    const savedApplied = await applySavedRecipes();
     currentIndex = 0;
 
     if (!datasets.length) {
@@ -366,10 +485,17 @@ async function scanCurrentPage() {
     }
 
     populateDatasetSelect();
+    applyCleanupControls(activeDataset()?.cleanupOptions || defaultCleanupOptions());
     renderFieldEditor();
     renderDataset();
+    await updateRecipeUi();
     els.results.hidden = false;
-    showStatus(`Detected ${datasets.length} dataset${datasets.length === 1 ? "" : "s"}.`, "success");
+    showStatus(
+      savedApplied
+        ? `Detected ${datasets.length} dataset${datasets.length === 1 ? "" : "s"}. Applied ${savedApplied} saved setting${savedApplied === 1 ? "" : "s"}.`
+        : `Detected ${datasets.length} dataset${datasets.length === 1 ? "" : "s"}.`,
+      "success"
+    );
   } catch (error) {
     els.results.hidden = true;
     showStatus(
@@ -448,6 +574,7 @@ function renderFieldEditor() {
     check.addEventListener("change", () => {
       column.enabled = check.checked;
       renderDataset();
+      markRecipeDirty();
     });
 
     const input = document.createElement("input");
@@ -457,6 +584,7 @@ function renderFieldEditor() {
     input.addEventListener("input", () => {
       column.label = input.value.trim() || column.source;
       renderDataset();
+      markRecipeDirty();
     });
 
     const up = document.createElement("button");
@@ -847,9 +975,11 @@ async function refreshPlan() {
 els.scan.addEventListener("click", scanCurrentPage);
 els.select.addEventListener("change", () => {
   currentIndex = Number(els.select.value) || 0;
+  applyCleanupControls(activeDataset()?.cleanupOptions || defaultCleanupOptions());
   renderFieldEditor();
   renderDataset();
   renderCleanupStats();
+  updateRecipeUi();
 });
 els.copy.addEventListener("click", async () => {
   const dataset = activeDataset();
@@ -888,6 +1018,7 @@ els.selectAllFields.addEventListener("click", () => {
   columnConfig(dataset).forEach(column => column.enabled = true);
   renderFieldEditor();
   renderDataset();
+  markRecipeDirty();
 });
 
 els.resetFields.addEventListener("click", () => {
@@ -896,6 +1027,7 @@ els.resetFields.addEventListener("click", () => {
   resetColumnConfig(dataset);
   renderFieldEditor();
   renderDataset();
+  markRecipeDirty();
 });
 
 els.highlight.addEventListener("click", async () => {
@@ -970,14 +1102,10 @@ els.applyCleanup.addEventListener("click", () => {
   const dataset=activeDataset();
   if(!dataset) return;
   const before=dataset.rows.length;
-  dataset.rows=cleanupDataset(dataset,{
-    removeDuplicates:els.cleanDuplicates.checked,
-    removeEmpty:els.cleanEmpty.checked,
-    removeMissingTitle:els.cleanMissingTitle.checked,
-    normalizePrice:els.cleanPrice.checked,
-    stripTracking:els.cleanTracking.checked
-  });
+  dataset.cleanupOptions=currentCleanupOptions();
+  dataset.rows=cleanupDataset(dataset,dataset.cleanupOptions);
   renderDataset();
+  markRecipeDirty();
   const removed=before-dataset.rows.length;
   showStatus(removed>0 ? `Cleanup complete. Removed ${removed} row${removed===1?"":"s"}.` : "Cleanup complete. No rows were removed.","success");
 });
@@ -986,8 +1114,57 @@ els.resetCleanup.addEventListener("click", () => {
   const dataset=activeDataset();
   if(!dataset?.originalRows) return;
   dataset.rows=cloneRows(dataset.originalRows);
+  dataset.cleanupOptions=defaultCleanupOptions();
+  applyCleanupControls(dataset.cleanupOptions);
   renderDataset();
+  markRecipeDirty();
   showStatus("Original scanned rows restored.","success");
+});
+
+[els.cleanDuplicates,els.cleanEmpty,els.cleanMissingTitle,els.cleanPrice,els.cleanTracking].forEach(control => {
+  control.addEventListener("change", markRecipeDirty);
+});
+
+els.saveRecipe.addEventListener("click", async () => {
+  const dataset=activeDataset();
+  if(!dataset) return;
+
+  const map=await loadRecipeMap();
+  const key=recipeKey(dataset);
+  dataset.cleanupOptions=currentCleanupOptions();
+
+  map[key]={
+    key,
+    host:currentPageHost,
+    type:dataset.type,
+    kind:datasetKind(dataset),
+    headers:[...(dataset.headers || [])],
+    columns:columnConfig(dataset).map(column => ({
+      source:column.source,
+      label:column.label,
+      enabled:column.enabled,
+      order:column.order
+    })),
+    cleanup:{...dataset.cleanupOptions},
+    updatedAt:Date.now()
+  };
+
+  await saveRecipeMap(map);
+  dataset.appliedRecipeKey=key;
+  await updateRecipeUi(dataset);
+  showStatus(`Settings saved for ${currentPageHost || "this site"}. They will auto-apply after the next scan.`,"success");
+});
+
+els.forgetRecipe.addEventListener("click", async () => {
+  const dataset=activeDataset();
+  if(!dataset) return;
+  const map=await loadRecipeMap();
+  const key=recipeKey(dataset);
+  delete map[key];
+  await saveRecipeMap(map);
+  dataset.appliedRecipeKey="";
+  await updateRecipeUi(dataset);
+  showStatus("Saved settings removed. Current preview is unchanged.","success");
 });
 
 els.activate.addEventListener("click", () => chrome.runtime.openOptionsPage());

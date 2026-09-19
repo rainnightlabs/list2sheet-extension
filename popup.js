@@ -1,12 +1,16 @@
 import {getProState} from "./shared/license-state.js";
 
 const FREE_ROW_LIMIT = 100;
-const PREVIEW_ROW_LIMIT = 12;
+const DEFAULT_PREVIEW_LIMIT = 12;
+const SESSION_STATE_PREFIX = "list2sheet_tabstate_v1_";
 
 let datasets = [];
 let currentIndex = 0;
 let isPro = false;
 let currentPageHost = "";
+let currentTabId = null;
+let currentPageUrl = "";
+let sessionSaveTimer = null;
 const RECIPE_STORAGE_KEY = "list2sheet_recipes_v1";
 
 const els = {
@@ -47,7 +51,9 @@ const els = {
   forgetRecipe: document.querySelector("#forgetRecipeButton"),
   collectMore: document.querySelector("#collectMoreButton"),
   scrollRounds: document.querySelector("#scrollRounds"),
-  collectorStats: document.querySelector("#collectorStats")
+  collectorStats: document.querySelector("#collectorStats"),
+  previewMeta: document.querySelector("#previewMeta"),
+  previewLimit: document.querySelector("#previewLimit")
 };
 
 function showStatus(message, type="") {
@@ -62,6 +68,123 @@ function hideStatus() {
 
 function normalizeCell(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
+}
+
+function sessionStateKey(tabId = currentTabId) {
+  return tabId == null ? "" : SESSION_STATE_PREFIX + tabId;
+}
+
+function sanitizeDatasetState(dataset) {
+  if (!dataset || !Array.isArray(dataset.headers)) return null;
+
+  dataset.rows = Array.isArray(dataset.rows) ? dataset.rows : [];
+  dataset.originalRows = Array.isArray(dataset.originalRows)
+    ? dataset.originalRows
+    : dataset.rows.map(row => ({...row}));
+  dataset.cleanupOptions = {...defaultCleanupOptions(), ...(dataset.cleanupOptions || {})};
+
+  const bySource = new Map();
+  if (Array.isArray(dataset.columnConfig)) {
+    for (const column of dataset.columnConfig) {
+      if (!column?.source || !dataset.headers.includes(column.source) || bySource.has(column.source)) continue;
+      bySource.set(column.source, {
+        source: column.source,
+        label: normalizeCell(column.label) || column.source,
+        enabled: column.enabled !== false,
+        order: Number.isFinite(column.order) ? column.order : bySource.size
+      });
+    }
+  }
+
+  for (const source of dataset.headers) {
+    if (!bySource.has(source)) {
+      bySource.set(source, {
+        source,
+        label: source,
+        enabled: true,
+        order: bySource.size
+      });
+    }
+  }
+
+  dataset.columnConfig = [...bySource.values()]
+    .sort((a,b) => a.order - b.order)
+    .map((column,index) => ({...column, order:index}));
+
+  if (!dataset.columnConfig.some(column => column.enabled) && dataset.columnConfig[0]) {
+    dataset.columnConfig[0].enabled = true;
+  }
+
+  return dataset;
+}
+
+async function saveSessionStateNow() {
+  if (!currentTabId || !currentPageUrl || !datasets.length || !chrome.storage?.session) return;
+
+  const key = sessionStateKey();
+  const payload = {
+    url: currentPageUrl,
+    host: currentPageHost,
+    currentIndex,
+    previewLimit: els.previewLimit?.value || String(DEFAULT_PREVIEW_LIMIT),
+    datasets,
+    savedAt: Date.now()
+  };
+
+  try {
+    await chrome.storage.session.set({[key]: payload});
+  } catch (error) {
+    console.warn("LIST2SHEET_SESSION_SAVE_FAILED", error);
+  }
+}
+
+function scheduleSessionSave() {
+  clearTimeout(sessionSaveTimer);
+  sessionSaveTimer = setTimeout(() => {
+    saveSessionStateNow();
+  }, 120);
+}
+
+async function restoreSessionState() {
+  if (!chrome.storage?.session) return false;
+
+  const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
+  if (!tab?.id) return false;
+
+  currentTabId = tab.id;
+  currentPageUrl = tab.url || "";
+  try {
+    currentPageHost = new URL(currentPageUrl).hostname.replace(/^www\./,"").toLowerCase();
+  } catch {
+    currentPageHost = "";
+  }
+
+  const key = sessionStateKey(tab.id);
+  const result = await chrome.storage.session.get(key);
+  const saved = result[key];
+
+  if (!saved || saved.url !== currentPageUrl || !Array.isArray(saved.datasets) || !saved.datasets.length) {
+    return false;
+  }
+
+  datasets = saved.datasets.map(sanitizeDatasetState).filter(Boolean);
+  if (!datasets.length) return false;
+
+  currentIndex = Math.max(0,Math.min(Number(saved.currentIndex)||0,datasets.length-1));
+  if (els.previewLimit) {
+    const allowed = new Set(["12","50","all"]);
+    els.previewLimit.value = allowed.has(String(saved.previewLimit)) ? String(saved.previewLimit) : "12";
+  }
+
+  populateDatasetSelect();
+  els.select.value = String(currentIndex);
+  applyCleanupControls(activeDataset()?.cleanupOptions || defaultCleanupOptions());
+  renderFieldEditor();
+  renderDataset();
+  await updateRecipeUi();
+  els.results.hidden = false;
+  showStatus(`Restored ${activeDataset()?.rows?.length || 0} collected rows from this tab.`,"success");
+  return true;
 }
 
 function datasetKind(dataset) {
@@ -530,8 +653,10 @@ async function scanCurrentPage() {
   try {
     const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
     if (!tab?.id) throw new Error("No active tab found.");
+    currentTabId = tab.id;
+    currentPageUrl = tab.url || "";
     try {
-      currentPageHost = new URL(tab.url || "").hostname.replace(/^www\./,"").toLowerCase();
+      currentPageHost = new URL(currentPageUrl).hostname.replace(/^www\./,"").toLowerCase();
     } catch {
       currentPageHost = "";
     }
@@ -546,6 +671,7 @@ async function scanCurrentPage() {
       dataset.originalRows = dataset.rows.map(row => ({...row}));
       dataset.cleanupOptions = defaultCleanupOptions();
       resetColumnConfig(dataset);
+      sanitizeDatasetState(dataset);
     });
     const savedApplied = await applySavedRecipes();
     currentIndex = savedApplied.preferredIndex >= 0 ? savedApplied.preferredIndex : 0;
@@ -563,6 +689,7 @@ async function scanCurrentPage() {
     renderDataset();
     await updateRecipeUi();
     els.results.hidden = false;
+    scheduleSessionSave();
     showStatus(
       savedApplied.count
         ? `Detected ${datasets.length} dataset${datasets.length === 1 ? "" : "s"}. Applied ${savedApplied.count} saved setting${savedApplied.count === 1 ? "" : "s"} and selected the best match.`
@@ -609,9 +736,7 @@ function resetColumnConfig(dataset) {
 }
 
 function columnConfig(dataset) {
-  if (!Array.isArray(dataset.columnConfig) || dataset.columnConfig.length !== dataset.headers.length) {
-    resetColumnConfig(dataset);
-  }
+  sanitizeDatasetState(dataset);
   return dataset.columnConfig.sort((a,b) => a.order - b.order);
 }
 
@@ -648,6 +773,7 @@ function renderFieldEditor() {
       column.enabled = check.checked;
       renderDataset();
       markRecipeDirty();
+      scheduleSessionSave();
     });
 
     const input = document.createElement("input");
@@ -781,7 +907,14 @@ function renderDataset() {
   els.meta.textContent = `${dataset.rows.length} rows × ${columns.length} selected`;
   els.limitNotice.hidden = isPro || dataset.rows.length <= FREE_ROW_LIMIT;
 
-  const previewRows = rows.slice(0, PREVIEW_ROW_LIMIT);
+  const previewMode = els.previewLimit?.value || String(DEFAULT_PREVIEW_LIMIT);
+  const previewCount = previewMode === "all"
+    ? rows.length
+    : Math.max(1, Number(previewMode) || DEFAULT_PREVIEW_LIMIT);
+  const previewRows = rows.slice(0, previewCount);
+  if (els.previewMeta) {
+    els.previewMeta.textContent = `Showing ${previewRows.length} of ${rows.length} row${rows.length === 1 ? "" : "s"}`;
+  }
   els.preview.innerHTML = "";
 
   const thead = document.createElement("thead");
@@ -1197,6 +1330,7 @@ els.select.addEventListener("change", () => {
   renderDataset();
   renderCleanupStats();
   updateRecipeUi();
+  scheduleSessionSave();
 });
 els.copy.addEventListener("click", async () => {
   const dataset = activeDataset();
@@ -1236,6 +1370,7 @@ els.selectAllFields.addEventListener("click", () => {
   renderFieldEditor();
   renderDataset();
   markRecipeDirty();
+  scheduleSessionSave();
 });
 
 els.resetFields.addEventListener("click", () => {
@@ -1245,6 +1380,7 @@ els.resetFields.addEventListener("click", () => {
   renderFieldEditor();
   renderDataset();
   markRecipeDirty();
+  scheduleSessionSave();
 });
 
 els.highlight.addEventListener("click", async () => {
@@ -1323,6 +1459,7 @@ els.applyCleanup.addEventListener("click", () => {
   dataset.rows=cleanupDataset(dataset,dataset.cleanupOptions);
   renderDataset();
   markRecipeDirty();
+  scheduleSessionSave();
   const removed=before-dataset.rows.length;
   showStatus(removed>0 ? `Cleanup complete. Removed ${removed} row${removed===1?"":"s"}.` : "Cleanup complete. No rows were removed.","success");
 });
@@ -1335,6 +1472,7 @@ els.resetCleanup.addEventListener("click", () => {
   applyCleanupControls(dataset.cleanupOptions);
   renderDataset();
   markRecipeDirty();
+  scheduleSessionSave();
   showStatus("Original scanned rows restored.","success");
 });
 
@@ -1374,6 +1512,7 @@ els.saveRecipe.addEventListener("click", async () => {
   await saveRecipeMap(map);
   dataset.appliedRecipeKey=key;
   await updateRecipeUi(dataset);
+  scheduleSessionSave();
   showStatus(`Settings saved for ${currentPageHost || "this site"}. They will auto-apply after the next scan.`,"success");
 });
 
@@ -1413,6 +1552,7 @@ els.collectMore.addEventListener("click", async () => {
 
     renderDataset();
     renderFieldEditor();
+    scheduleSessionSave();
 
     const added=Math.max(0,after-before);
     const suffix=result.stoppedEarly
@@ -1434,6 +1574,16 @@ els.collectMore.addEventListener("click", async () => {
   }
 });
 
+els.previewLimit.addEventListener("change", () => {
+  renderDataset();
+  scheduleSessionSave();
+});
+
 els.activate.addEventListener("click", () => chrome.runtime.openOptionsPage());
 
-refreshPlan();
+async function initializePopup() {
+  await refreshPlan();
+  await restoreSessionState();
+}
+
+initializePopup();

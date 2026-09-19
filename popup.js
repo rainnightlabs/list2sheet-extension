@@ -22,7 +22,13 @@ const els = {
   planBadge: document.querySelector("#planBadge"),
   licenseTitle: document.querySelector("#licenseTitle"),
   licenseDescription: document.querySelector("#licenseDescription"),
-  activate: document.querySelector("#activateButton")
+  activate: document.querySelector("#activateButton"),
+  highlight: document.querySelector("#highlightButton"),
+  toggleFields: document.querySelector("#toggleFieldsButton"),
+  fieldEditor: document.querySelector("#fieldEditor"),
+  fieldList: document.querySelector("#fieldList"),
+  selectAllFields: document.querySelector("#selectAllFields"),
+  resetFields: document.querySelector("#resetFields")
 };
 
 function showStatus(message, type="") {
@@ -41,6 +47,41 @@ function normalizeCell(value) {
 
 function extractPageDatasets() {
   const clean = (value) => String(value ?? "").replace(/\s+/g, " ").trim();
+
+  const cssPath = (element) => {
+    if (!element || element.nodeType !== 1) return "";
+    if (element.id) return "#" + CSS.escape(element.id);
+
+    const parts = [];
+    let node = element;
+    while (node && node.nodeType === 1 && node !== document.documentElement) {
+      let part = node.tagName.toLowerCase();
+      const classes = [...node.classList]
+        .filter(name => name && name.length < 50)
+        .slice(0, 2);
+      if (classes.length) {
+        part += classes.map(name => "." + CSS.escape(name)).join("");
+      }
+
+      const parent = node.parentElement;
+      if (parent) {
+        const sameTag = [...parent.children].filter(child => child.tagName === node.tagName);
+        if (sameTag.length > 1) {
+          part += `:nth-of-type(${sameTag.indexOf(node) + 1})`;
+        }
+      }
+
+      parts.unshift(part);
+      const candidate = parts.join(" > ");
+      try {
+        if (document.querySelectorAll(candidate).length === 1) return candidate;
+      } catch {}
+
+      node = parent;
+      if (parts.length >= 7) break;
+    }
+    return parts.join(" > ");
+  };
 
   const uniqueHeaders = (headers) => {
     const seen = new Map();
@@ -81,7 +122,11 @@ function extractPageDatasets() {
         label: `Table ${tableIndex + 1}`,
         headers,
         rows: dataRows,
-        score: 1200 + dataRows.length * Math.min(headers.length, 8)
+        score: 1200 + dataRows.length * Math.min(headers.length, 8),
+        source: {
+          kind: "table",
+          selector: cssPath(table)
+        }
       });
     }
   });
@@ -262,6 +307,11 @@ function extractPageDatasets() {
           linkRatio,
           priceRatio,
           isMenuLike
+        },
+        source: {
+          kind: "repeated",
+          parentSelector: cssPath(parent),
+          childIndexes: items.map(item => [...parent.children].indexOf(item))
         }
       });
     }
@@ -292,6 +342,7 @@ async function scanCurrentPage() {
     });
 
     datasets = result?.[0]?.result || [];
+    datasets.forEach(dataset => resetColumnConfig(dataset));
     currentIndex = 0;
 
     if (!datasets.length) {
@@ -301,6 +352,7 @@ async function scanCurrentPage() {
     }
 
     populateDatasetSelect();
+    renderFieldEditor();
     renderDataset();
     els.results.hidden = false;
     showStatus(`Detected ${datasets.length} dataset${datasets.length === 1 ? "" : "s"}.`, "success");
@@ -334,12 +386,109 @@ function rowsForPlan(dataset) {
   return isPro ? dataset.rows : dataset.rows.slice(0, FREE_ROW_LIMIT);
 }
 
+function resetColumnConfig(dataset) {
+  dataset.columnConfig = dataset.headers.map((source, index) => ({
+    source,
+    label: source,
+    enabled: true,
+    order: index
+  }));
+}
+
+function columnConfig(dataset) {
+  if (!Array.isArray(dataset.columnConfig) || dataset.columnConfig.length !== dataset.headers.length) {
+    resetColumnConfig(dataset);
+  }
+  return dataset.columnConfig.sort((a,b) => a.order - b.order);
+}
+
+function activeColumns(dataset) {
+  return columnConfig(dataset).filter(column => column.enabled);
+}
+
+function normalizedExportRows(dataset) {
+  const columns = activeColumns(dataset);
+  return rowsForPlan(dataset).map(row => {
+    const out = {};
+    columns.forEach(column => {
+      out[column.label || column.source] = row[column.source] ?? "";
+    });
+    return out;
+  });
+}
+
+function renderFieldEditor() {
+  const dataset = activeDataset();
+  if (!dataset) return;
+  const columns = columnConfig(dataset);
+  els.fieldList.innerHTML = "";
+
+  columns.forEach((column, index) => {
+    const row = document.createElement("div");
+    row.className = "fieldRow";
+
+    const check = document.createElement("input");
+    check.type = "checkbox";
+    check.checked = column.enabled;
+    check.title = "Include this field";
+    check.addEventListener("change", () => {
+      column.enabled = check.checked;
+      renderDataset();
+    });
+
+    const input = document.createElement("input");
+    input.className = "fieldName";
+    input.value = column.label;
+    input.title = `Source: ${column.source}`;
+    input.addEventListener("input", () => {
+      column.label = input.value.trim() || column.source;
+      renderDataset();
+    });
+
+    const up = document.createElement("button");
+    up.type = "button";
+    up.className = "orderButton";
+    up.textContent = "↑";
+    up.disabled = index === 0;
+    up.addEventListener("click", () => moveColumn(dataset, index, -1));
+
+    const down = document.createElement("button");
+    down.type = "button";
+    down.className = "orderButton";
+    down.textContent = "↓";
+    down.disabled = index === columns.length - 1;
+    down.addEventListener("click", () => moveColumn(dataset, index, 1));
+
+    row.append(check, input, up, down);
+    els.fieldList.appendChild(row);
+  });
+}
+
+function moveColumn(dataset, index, direction) {
+  const columns = columnConfig(dataset);
+  const target = index + direction;
+  if (target < 0 || target >= columns.length) return;
+  const a = columns[index];
+  const b = columns[target];
+  const order = a.order;
+  a.order = b.order;
+  b.order = order;
+  renderFieldEditor();
+  renderDataset();
+}
+
 function renderDataset() {
   const dataset = activeDataset();
   if (!dataset) return;
 
   const rows = rowsForPlan(dataset);
-  els.meta.textContent = `${dataset.rows.length} rows × ${dataset.headers.length} columns`;
+  let columns = activeColumns(dataset);
+  if (!columns.length) {
+    const first = columnConfig(dataset)[0];
+    if (first) first.enabled = true;
+    columns = activeColumns(dataset);
+  }
+  els.meta.textContent = `${dataset.rows.length} rows × ${columns.length} selected`;
   els.limitNotice.hidden = isPro || dataset.rows.length <= FREE_ROW_LIMIT;
 
   const previewRows = rows.slice(0, PREVIEW_ROW_LIMIT);
@@ -347,9 +496,10 @@ function renderDataset() {
 
   const thead = document.createElement("thead");
   const headRow = document.createElement("tr");
-  dataset.headers.forEach(header => {
+  columns.forEach(column => {
     const th = document.createElement("th");
-    th.textContent = header;
+    th.textContent = column.label || column.source;
+    th.title = column.source;
     headRow.appendChild(th);
   });
   thead.appendChild(headRow);
@@ -357,9 +507,9 @@ function renderDataset() {
   const tbody = document.createElement("tbody");
   previewRows.forEach(row => {
     const tr = document.createElement("tr");
-    dataset.headers.forEach(header => {
+    columns.forEach(column => {
       const td = document.createElement("td");
-      td.textContent = normalizeCell(row[header]);
+      td.textContent = normalizeCell(row[column.source]);
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
@@ -370,32 +520,41 @@ function renderDataset() {
 }
 
 function toTsv(dataset) {
+  const columns = activeColumns(dataset);
   const rows = rowsForPlan(dataset);
   const esc = value => normalizeCell(value).replace(/\t/g," ").replace(/\r?\n/g," ");
   return [
-    dataset.headers.map(esc).join("\t"),
-    ...rows.map(row => dataset.headers.map(header => esc(row[header])).join("\t"))
+    columns.map(column => esc(column.label || column.source)).join("\t"),
+    ...rows.map(row => columns.map(column => esc(row[column.source])).join("\t"))
   ].join("\n");
 }
 
 function toCsv(dataset) {
+  const columns = activeColumns(dataset);
+  const rows = rowsForPlan(dataset);
   const quote = value => {
     const text = normalizeCell(value);
     return /[",\n]/.test(text) ? `"${text.replace(/"/g,'""')}"` : text;
   };
   return [
-    dataset.headers.map(quote).join(","),
-    ...dataset.rows.map(row => dataset.headers.map(header => quote(row[header])).join(","))
+    columns.map(column => quote(column.label || column.source)).join(","),
+    ...rows.map(row => columns.map(column => quote(row[column.source])).join(","))
   ].join("\r\n");
 }
 
 function toMarkdown(dataset) {
+  const columns = activeColumns(dataset);
+  const rows = rowsForPlan(dataset);
   const esc = value => normalizeCell(value).replace(/\|/g,"\\|");
   return [
-    "| " + dataset.headers.map(esc).join(" | ") + " |",
-    "| " + dataset.headers.map(() => "---").join(" | ") + " |",
-    ...dataset.rows.map(row => "| " + dataset.headers.map(header => esc(row[header])).join(" | ") + " |")
+    "| " + columns.map(column => esc(column.label || column.source)).join(" | ") + " |",
+    "| " + columns.map(() => "---").join(" | ") + " |",
+    ...rows.map(row => "| " + columns.map(column => esc(row[column.source])).join(" | ") + " |")
   ].join("\n");
+}
+
+function toJson(dataset) {
+  return JSON.stringify(normalizedExportRows(dataset), null, 2);
 }
 
 function downloadText(filename, text, mime) {
@@ -446,6 +605,7 @@ async function refreshPlan() {
 els.scan.addEventListener("click", scanCurrentPage);
 els.select.addEventListener("change", () => {
   currentIndex = Number(els.select.value) || 0;
+  renderFieldEditor();
   renderDataset();
 });
 els.copy.addEventListener("click", async () => {
@@ -460,12 +620,97 @@ els.csv.addEventListener("click", () => {
 });
 els.json.addEventListener("click", () => {
   if (!requirePro()) return;
-  downloadText("list2sheet.json", JSON.stringify(activeDataset().rows,null,2), "application/json;charset=utf-8");
+  downloadText("list2sheet.json", toJson(activeDataset()), "application/json;charset=utf-8");
 });
 els.markdown.addEventListener("click", () => {
   if (!requirePro()) return;
   downloadText("list2sheet.md", toMarkdown(activeDataset()), "text/markdown;charset=utf-8");
 });
+
+els.toggleFields.addEventListener("click", () => {
+  const willOpen = els.fieldEditor.hidden;
+  els.fieldEditor.hidden = !willOpen;
+  els.toggleFields.textContent = willOpen ? "Hide fields" : "Edit fields";
+  if (willOpen) renderFieldEditor();
+});
+
+els.selectAllFields.addEventListener("click", () => {
+  const dataset = activeDataset();
+  if (!dataset) return;
+  columnConfig(dataset).forEach(column => column.enabled = true);
+  renderFieldEditor();
+  renderDataset();
+});
+
+els.resetFields.addEventListener("click", () => {
+  const dataset = activeDataset();
+  if (!dataset) return;
+  resetColumnConfig(dataset);
+  renderFieldEditor();
+  renderDataset();
+});
+
+els.highlight.addEventListener("click", async () => {
+  const dataset = activeDataset();
+  if (!dataset?.source) return;
+
+  try {
+    const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
+    if (!tab?.id) throw new Error("No active tab found.");
+
+    const result = await chrome.scripting.executeScript({
+      target:{tabId:tab.id},
+      args:[dataset.source],
+      func:(source) => {
+        const targets = [];
+        if (source?.kind === "table" && source.selector) {
+          const element = document.querySelector(source.selector);
+          if (element) targets.push(element);
+        } else if (source?.kind === "repeated" && source.parentSelector) {
+          const parent = document.querySelector(source.parentSelector);
+          if (parent) {
+            const children = [...parent.children];
+            for (const index of source.childIndexes || []) {
+              if (children[index]) targets.push(children[index]);
+            }
+          }
+        }
+
+        if (!targets.length) return 0;
+
+        const originals = targets.map(element => ({
+          element,
+          outline: element.style.outline,
+          outlineOffset: element.style.outlineOffset,
+          background: element.style.backgroundColor
+        }));
+
+        targets.forEach(element => {
+          element.style.outline = "3px solid #57d39b";
+          element.style.outlineOffset = "2px";
+        });
+
+        targets[0].scrollIntoView({behavior:"smooth",block:"center",inline:"nearest"});
+
+        setTimeout(() => {
+          originals.forEach(({element,outline,outlineOffset,background}) => {
+            element.style.outline = outline;
+            element.style.outlineOffset = outlineOffset;
+            element.style.backgroundColor = background;
+          });
+        }, 2600);
+
+        return targets.length;
+      }
+    });
+
+    const count = result?.[0]?.result || 0;
+    showStatus(count ? `Highlighted ${count} source element${count === 1 ? "" : "s"} on the page.` : "Could not locate the source elements. Re-scan the page and try again.", count ? "success" : "");
+  } catch (error) {
+    showStatus("Could not highlight this dataset: " + error.message, "error");
+  }
+});
+
 els.activate.addEventListener("click", () => chrome.runtime.openOptionsPage());
 
 refreshPlan();

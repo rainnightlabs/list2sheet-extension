@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **v0.5 infinite-scroll collection build**
+Repository status: **v0.5.1 collection reliability fix**
 
 ## Phase 1 features
 
@@ -21,6 +21,9 @@ Repository status: **v0.5 infinite-scroll collection build**
 - Highlight the detected source region on the active webpage
 - In-popup data preview
 - Pro auto-scroll collection:
+  - reuses the same extraction engine as the normal Scan button on every round
+  - re-selects the matching dataset after lazy loading
+  - preserves saved field configuration and cleanup rules
   - collect newly loaded rows while scrolling
   - de-duplicate collected rows
   - stop early after two no-growth rounds
@@ -110,3 +113,10 @@ These are planned Pro features and are **not** part of the MVP yet:
 Rainnight Labs  
 https://www.rainnightlabs.com  
 admin@rainnightlabs.com
+
+
+## v0.5.1 reliability fix
+
+- Saved settings now use compatibility matching instead of requiring an exact header signature.
+- When a saved recipe matches multiple detected datasets, List2Sheet automatically selects the strongest match.
+- Infinite-scroll collection no longer uses a separate simplified extractor; every scroll round re-runs the main extraction engine, preventing Title/Price inconsistencies.

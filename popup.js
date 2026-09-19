@@ -28,7 +28,18 @@ const els = {
   fieldEditor: document.querySelector("#fieldEditor"),
   fieldList: document.querySelector("#fieldList"),
   selectAllFields: document.querySelector("#selectAllFields"),
-  resetFields: document.querySelector("#resetFields")
+  resetFields: document.querySelector("#resetFields"),
+  toggleCleanup: document.querySelector("#toggleCleanupButton"),
+  cleanupEditor: document.querySelector("#cleanupEditor"),
+  cleanupStats: document.querySelector("#cleanupStats"),
+  cleanDuplicates: document.querySelector("#cleanDuplicates"),
+  cleanEmpty: document.querySelector("#cleanEmpty"),
+  cleanMissingTitle: document.querySelector("#cleanMissingTitle"),
+  cleanPrice: document.querySelector("#cleanPrice"),
+  cleanTracking: document.querySelector("#cleanTracking"),
+  applyCleanup: document.querySelector("#applyCleanup"),
+  resetCleanup: document.querySelector("#resetCleanup"),
+  xlsx: document.querySelector("#xlsxButton")
 };
 
 function showStatus(message, type="") {
@@ -342,7 +353,10 @@ async function scanCurrentPage() {
     });
 
     datasets = result?.[0]?.result || [];
-    datasets.forEach(dataset => resetColumnConfig(dataset));
+    datasets.forEach(dataset => {
+      dataset.originalRows = dataset.rows.map(row => ({...row}));
+      resetColumnConfig(dataset);
+    });
     currentIndex = 0;
 
     if (!datasets.length) {
@@ -477,6 +491,81 @@ function moveColumn(dataset, index, direction) {
   renderDataset();
 }
 
+function cloneRows(rows) {
+  return rows.map(row => ({...row}));
+}
+
+function normalizePrice(value) {
+  let text = normalizeCell(value);
+  if (!text) return "";
+  text = text.replace(/￥/g, "¥");
+  text = text.replace(/^\s*¥\s*/, "¥");
+  text = text.replace(/^\s*\$\s*/, "$");
+  text = text.replace(/^\s*€\s*/, "€");
+  text = text.replace(/^\s*£\s*/, "£");
+  if (/^\d[\d,.]*(?:\.\d+)?\s*元$/i.test(text)) {
+    text = "¥" + text.replace(/\s*元$/i, "");
+  }
+  return text;
+}
+
+function stripTrackingParams(value) {
+  const text = normalizeCell(value);
+  if (!/^https?:\/\//i.test(text)) return text;
+  try {
+    const url = new URL(text);
+    const exact = new Set(["fbclid","gclid","dclid","msclkid","mc_cid","mc_eid"]);
+    for (const key of [...url.searchParams.keys()]) {
+      const lower = key.toLowerCase();
+      if (lower.startsWith("utm_") || exact.has(lower)) url.searchParams.delete(key);
+    }
+    return url.toString();
+  } catch {
+    return text;
+  }
+}
+
+function cleanupDataset(dataset, options) {
+  const sourceRows = cloneRows(dataset.originalRows || dataset.rows);
+  let rows = sourceRows.map(row => {
+    const out = {};
+    for (const [key,value] of Object.entries(row)) {
+      let next = normalizeCell(value);
+      if (options.normalizePrice && key === "Price") next = normalizePrice(next);
+      if (options.stripTracking && key === "URL") next = stripTrackingParams(next);
+      out[key] = next;
+    }
+    return out;
+  });
+
+  if (options.removeEmpty) {
+    rows = rows.filter(row => Object.values(row).some(value => normalizeCell(value)));
+  }
+
+  if (options.removeMissingTitle && dataset.headers.includes("Title")) {
+    rows = rows.filter(row => normalizeCell(row.Title));
+  }
+
+  if (options.removeDuplicates) {
+    const seen = new Set();
+    rows = rows.filter(row => {
+      const fingerprint = dataset.headers.map(header => normalizeCell(row[header])).join("\u241F");
+      if (seen.has(fingerprint)) return false;
+      seen.add(fingerprint);
+      return true;
+    });
+  }
+
+  return rows;
+}
+
+function renderCleanupStats(dataset = activeDataset()) {
+  if (!dataset || !els.cleanupStats) return;
+  const original = dataset.originalRows?.length ?? dataset.rows.length;
+  const current = dataset.rows.length;
+  els.cleanupStats.textContent = current === original ? `${current} rows` : `${original} → ${current} rows`;
+}
+
 function renderDataset() {
   const dataset = activeDataset();
   if (!dataset) return;
@@ -516,6 +605,7 @@ function renderDataset() {
   });
 
   els.preview.append(thead,tbody);
+  renderCleanupStats(dataset);
   updateProActions();
 }
 
@@ -557,6 +647,158 @@ function toJson(dataset) {
   return JSON.stringify(normalizedExportRows(dataset), null, 2);
 }
 
+function xmlEscape(value) {
+  return String(value ?? "")
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;")
+    .replace(/'/g,"&apos;");
+}
+
+function excelColumnName(index) {
+  let value = index + 1;
+  let out = "";
+  while (value > 0) {
+    value--;
+    out = String.fromCharCode(65 + (value % 26)) + out;
+    value = Math.floor(value / 26);
+  }
+  return out;
+}
+
+function crc32(bytes) {
+  if (!crc32.table) {
+    crc32.table = Array.from({length:256}, (_,n) => {
+      let c=n;
+      for(let k=0;k<8;k++) c=(c&1) ? (0xEDB88320^(c>>>1)) : (c>>>1);
+      return c>>>0;
+    });
+  }
+  let crc=0xFFFFFFFF;
+  for(const byte of bytes) crc=crc32.table[(crc^byte)&0xFF]^(crc>>>8);
+  return (crc^0xFFFFFFFF)>>>0;
+}
+
+function u16(value) {
+  return new Uint8Array([value&255,(value>>>8)&255]);
+}
+
+function u32(value) {
+  return new Uint8Array([value&255,(value>>>8)&255,(value>>>16)&255,(value>>>24)&255]);
+}
+
+function concatBytes(parts) {
+  const length=parts.reduce((sum,part)=>sum+part.length,0);
+  const out=new Uint8Array(length);
+  let offset=0;
+  for(const part of parts){out.set(part,offset);offset+=part.length;}
+  return out;
+}
+
+function makeZip(files) {
+  const encoder=new TextEncoder();
+  const localParts=[];
+  const centralParts=[];
+  let offset=0;
+
+  files.forEach(file => {
+    const name=encoder.encode(file.name);
+    const data=typeof file.data==="string" ? encoder.encode(file.data) : file.data;
+    const crc=crc32(data);
+
+    const local=concatBytes([
+      u32(0x04034b50),u16(20),u16(0),u16(0),u16(0),u16(0),
+      u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),
+      name,data
+    ]);
+    localParts.push(local);
+
+    const central=concatBytes([
+      u32(0x02014b50),u16(20),u16(20),u16(0),u16(0),u16(0),u16(0),
+      u32(crc),u32(data.length),u32(data.length),u16(name.length),u16(0),u16(0),
+      u16(0),u16(0),u32(0),u32(offset),name
+    ]);
+    centralParts.push(central);
+    offset+=local.length;
+  });
+
+  const central=concatBytes(centralParts);
+  const end=concatBytes([
+    u32(0x06054b50),u16(0),u16(0),u16(files.length),u16(files.length),
+    u32(central.length),u32(offset),u16(0)
+  ]);
+  return concatBytes([...localParts,central,end]);
+}
+
+function toXlsx(dataset) {
+  const columns=activeColumns(dataset);
+  const rows=rowsForPlan(dataset);
+  const allRows=[
+    columns.map(column => column.label || column.source),
+    ...rows.map(row => columns.map(column => normalizeCell(row[column.source])))
+  ];
+
+  const sheetRows=allRows.map((row,rowIndex) => {
+    const cells=row.map((value,colIndex) => {
+      const ref=excelColumnName(colIndex)+(rowIndex+1);
+      const text=String(value ?? "");
+      const numeric=/^-?\d+(?:\.\d+)?$/.test(text) && !/^0\d+/.test(text);
+      if(numeric) return `<c r="${ref}"><v>${xmlEscape(text)}</v></c>`;
+      return `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${xmlEscape(text)}</t></is></c>`;
+    }).join("");
+    return `<row r="${rowIndex+1}">${cells}</row>`;
+  }).join("");
+
+  const lastRef=excelColumnName(Math.max(columns.length-1,0))+Math.max(allRows.length,1);
+  const sheet=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<dimension ref="A1:${lastRef}"/>
+<sheetData>${sheetRows}</sheetData>
+</worksheet>`;
+
+  const workbook=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="List2Sheet" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`;
+
+  const workbookRels=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>`;
+
+  const rootRels=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`;
+
+  const contentTypes=`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>`;
+
+  return makeZip([
+    {name:"[Content_Types].xml",data:contentTypes},
+    {name:"_rels/.rels",data:rootRels},
+    {name:"xl/workbook.xml",data:workbook},
+    {name:"xl/_rels/workbook.xml.rels",data:workbookRels},
+    {name:"xl/worksheets/sheet1.xml",data:sheet}
+  ]);
+}
+
+function downloadBytes(filename, bytes, mime) {
+  const blob=new Blob([bytes],{type:mime});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement("a");
+  a.href=url;
+  a.download=filename;
+  a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+}
+
 function downloadText(filename, text, mime) {
   const blob = new Blob([text], {type:mime});
   const url = URL.createObjectURL(blob);
@@ -574,7 +816,7 @@ function requirePro() {
 }
 
 function updateProActions() {
-  [els.csv,els.json,els.markdown].forEach(button => {
+  [els.csv,els.json,els.markdown,els.xlsx].forEach(button => {
     button.textContent = button.dataset.baseLabel || button.textContent.replace(" 🔒","");
     if (!button.dataset.baseLabel) button.dataset.baseLabel = button.textContent;
     if (!isPro) button.textContent += " 🔒";
@@ -607,6 +849,7 @@ els.select.addEventListener("change", () => {
   currentIndex = Number(els.select.value) || 0;
   renderFieldEditor();
   renderDataset();
+  renderCleanupStats();
 });
 els.copy.addEventListener("click", async () => {
   const dataset = activeDataset();
@@ -625,6 +868,11 @@ els.json.addEventListener("click", () => {
 els.markdown.addEventListener("click", () => {
   if (!requirePro()) return;
   downloadText("list2sheet.md", toMarkdown(activeDataset()), "text/markdown;charset=utf-8");
+});
+els.xlsx.addEventListener("click", () => {
+  if (!requirePro()) return;
+  const bytes=toXlsx(activeDataset());
+  downloadBytes("list2sheet.xlsx",bytes,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 });
 
 els.toggleFields.addEventListener("click", () => {
@@ -709,6 +957,37 @@ els.highlight.addEventListener("click", async () => {
   } catch (error) {
     showStatus("Could not highlight this dataset: " + error.message, "error");
   }
+});
+
+els.toggleCleanup.addEventListener("click", () => {
+  const willOpen=els.cleanupEditor.hidden;
+  els.cleanupEditor.hidden=!willOpen;
+  els.toggleCleanup.textContent=willOpen ? "Hide cleanup" : "Clean data";
+  if(willOpen) renderCleanupStats();
+});
+
+els.applyCleanup.addEventListener("click", () => {
+  const dataset=activeDataset();
+  if(!dataset) return;
+  const before=dataset.rows.length;
+  dataset.rows=cleanupDataset(dataset,{
+    removeDuplicates:els.cleanDuplicates.checked,
+    removeEmpty:els.cleanEmpty.checked,
+    removeMissingTitle:els.cleanMissingTitle.checked,
+    normalizePrice:els.cleanPrice.checked,
+    stripTracking:els.cleanTracking.checked
+  });
+  renderDataset();
+  const removed=before-dataset.rows.length;
+  showStatus(removed>0 ? `Cleanup complete. Removed ${removed} row${removed===1?"":"s"}.` : "Cleanup complete. No rows were removed.","success");
+});
+
+els.resetCleanup.addEventListener("click", () => {
+  const dataset=activeDataset();
+  if(!dataset?.originalRows) return;
+  dataset.rows=cloneRows(dataset.originalRows);
+  renderDataset();
+  showStatus("Original scanned rows restored.","success");
 });
 
 els.activate.addEventListener("click", () => chrome.runtime.openOptionsPage());

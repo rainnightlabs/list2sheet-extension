@@ -2,15 +2,18 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **v0.6 multi-page collection build**
+Repository status: **v0.6.1 extraction accuracy build**
 
 ## Phase 1 features
 
 - Chrome Manifest V3
 - Scan the current page on demand
 - Detect:
-  - HTML tables
+  - semantic search-result lists
+  - real HTML data tables
+  - ARIA / div-based data grids
   - repeated sibling/card structures
+  - same-origin iframe datasets
 - Dataset chooser
 - Semantic product fields (Title / Price / Seller / Sales / Rating / URL / Image)
 - Field editor:
@@ -145,3 +148,15 @@ admin@rainnightlabs.com
 Traditional pagination closes the extension popup when the tab navigates, so pagination is handled by a Manifest V3 background service worker rather than the popup itself.
 
 The first pagination release intentionally follows only normal same-origin Next links. JavaScript-only pagination buttons and anti-bot protected sites will be handled separately after this path is proven stable.
+
+
+## v0.6.1 extraction accuracy
+
+This release pauses pagination feature expansion and improves the scanner first:
+
+- Google-style pager/layout tables with only page numbers are rejected.
+- Search-result pages receive a dedicated Title / URL / Domain / Snippet dataset.
+- HTML data tables use header quality, row count, and layout heuristics instead of receiving a blanket top score.
+- ARIA role=table / role=grid structures are recognized as data grids.
+- Navigation/sidebar and pagination lists are filtered more aggressively.
+- Normal scans inspect accessible same-origin frames and preserve the frame id for highlight and collection.

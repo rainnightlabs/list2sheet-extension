@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>List2Sheet</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="brand">List2Sheet</div>
+      <div class="byline">by Rainnight Labs</div>
+    </div>
+    <span id="planBadge" class="badge">FREE</span>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Turn this page into structured data.</h1>
+      <p>Detect tables, lists, and repeated cards on the active page.</p>
+      <button id="scanButton" class="button primary">Scan current page</button>
+    </section>
+
+    <section id="statusBox" class="status" hidden></section>
+
+    <section id="results" hidden>
+      <div class="sectionHead">
+        <label for="datasetSelect">Detected dataset</label>
+        <span id="datasetMeta" class="muted"></span>
+      </div>
+
+      <select id="datasetSelect"></select>
+
+      <div id="limitNotice" class="notice" hidden>
+        Free plan previews and copies up to 100 rows. Activate Pro for unlimited rows and file exports.
+      </div>
+
+      <div class="tableWrap">
+        <table id="previewTable"></table>
+      </div>
+
+      <div class="actions">
+        <button id="copyButton" class="button">Copy TSV</button>
+        <button id="csvButton" class="button proAction">Export CSV</button>
+        <button id="jsonButton" class="button proAction">Export JSON</button>
+        <button id="markdownButton" class="button proAction">Export Markdown</button>
+      </div>
+    </section>
+
+    <section class="licenseCard">
+      <div>
+        <strong id="licenseTitle">Free plan</strong>
+        <p id="licenseDescription">Preview and copy up to 100 rows.</p>
+      </div>
+      <button id="activateButton" class="button small">Activate Pro</button>
+    </section>
+  </main>
+
+  <footer>
+    <a href="https://www.rainnightlabs.com/products/list2sheet/" target="_blank">Product page</a>
+    <span>•</span>
+    <a href="https://www.rainnightlabs.com/privacy/" target="_blank">Privacy</a>
+  </footer>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

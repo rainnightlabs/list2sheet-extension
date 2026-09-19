@@ -44,7 +44,10 @@ const els = {
   xlsx: document.querySelector("#xlsxButton"),
   saveRecipe: document.querySelector("#saveRecipeButton"),
   recipeStatus: document.querySelector("#recipeStatus"),
-  forgetRecipe: document.querySelector("#forgetRecipeButton")
+  forgetRecipe: document.querySelector("#forgetRecipeButton"),
+  collectMore: document.querySelector("#collectMoreButton"),
+  scrollRounds: document.querySelector("#scrollRounds"),
+  collectorStats: document.querySelector("#collectorStats")
 };
 
 function showStatus(message, type="") {
@@ -434,7 +437,9 @@ function extractPageDatasets() {
         source: {
           kind: "repeated",
           parentSelector: cssPath(parent),
-          childIndexes: items.map(item => [...parent.children].indexOf(item))
+          childIndexes: items.map(item => [...parent.children].indexOf(item)),
+          itemTag: items[0]?.tagName?.toLowerCase() || "",
+          itemClasses: items[0] ? [...items[0].classList].slice(0, 3) : []
         }
       });
     }
@@ -734,6 +739,7 @@ function renderDataset() {
 
   els.preview.append(thead,tbody);
   renderCleanupStats(dataset);
+  if (els.collectorStats) els.collectorStats.textContent = `${dataset.rows.length} collected`;
   updateProActions();
 }
 
@@ -961,15 +967,203 @@ async function refreshPlan() {
     els.licenseTitle.textContent = "List2Sheet Pro";
     els.licenseDescription.textContent = "Unlimited rows and file exports unlocked.";
     els.activate.textContent = "Manage license";
+    if (els.collectMore) els.collectMore.textContent = "Auto-scroll & collect";
   } else {
     els.planBadge.textContent = "FREE";
     els.planBadge.classList.remove("pro");
     els.licenseTitle.textContent = "Free plan";
     els.licenseDescription.textContent = "Preview and copy up to 100 rows.";
     els.activate.textContent = "Activate Pro";
+    if (els.collectMore) els.collectMore.textContent = "Auto-scroll & collect 🔒";
   }
 
   if (activeDataset()) renderDataset();
+}
+
+function mergeCollectedRows(dataset, incomingRows) {
+  const headers = dataset.headers || [];
+  const map = new Map();
+
+  const add = (row) => {
+    const url = normalizeCell(row.URL);
+    const title = normalizeCell(row.Title);
+    const price = normalizeCell(row.Price);
+    const image = normalizeCell(row.Image);
+    const fallback = headers.map(header => normalizeCell(row[header])).join("\u241F");
+    const key = url || [title,price,image].filter(Boolean).join("\u241F") || fallback;
+    if (!key) return;
+    if (!map.has(key)) map.set(key, {...row});
+  };
+
+  for (const row of dataset.originalRows || dataset.rows || []) add(row);
+  for (const row of incomingRows || []) add(row);
+
+  return [...map.values()];
+}
+
+async function collectMoreFromPage(dataset, maxRounds) {
+  const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
+  if (!tab?.id) throw new Error("No active tab found.");
+
+  const result = await chrome.scripting.executeScript({
+    target:{tabId:tab.id},
+    args:[dataset.source, dataset.type, Math.max(1, Math.min(Number(maxRounds)||10, 30))],
+    func:async (source, datasetType, maxRounds) => {
+      const clean = value => String(value ?? "").replace(/\s+/g," ").trim();
+      const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+      const pricePattern = /(?:[$€£¥￥]\s*\d[\d,.]*(?:\.\d+)?|\d[\d,.]*(?:\.\d+)?\s*(?:USD|EUR|GBP|CNY|RMB|元|円))/i;
+      const rows = new Map();
+
+      const rowKey = row =>
+        clean(row.URL) ||
+        [clean(row.Title),clean(row.Price),clean(row.Image)].filter(Boolean).join("\u241F") ||
+        JSON.stringify(row);
+
+      const addRow = row => {
+        const key=rowKey(row);
+        if(key && !rows.has(key)) rows.set(key,row);
+      };
+
+      const extractRepeatedItem = item => {
+        const extractFirstText=(selectors,predicate=()=>true)=>{
+          for(const selector of selectors){
+            for(const el of item.querySelectorAll(selector)){
+              const text=clean(el.innerText||el.textContent);
+              if(text && predicate(text,el)) return text;
+            }
+          }
+          return "";
+        };
+
+        const allText=clean(item.innerText);
+        const priceMatch=allText.match(pricePattern);
+        const price=priceMatch ? clean(priceMatch[0]) : "";
+        const isUsefulTitle=text =>
+          text.length>=3 &&
+          text.length<=180 &&
+          !/^[¥￥$€£]?\s*\d[\d,.]*$/.test(text) &&
+          !/^(¥|￥|\$|€|£)$/.test(text);
+
+        let title=extractFirstText([
+          "[class*=title]","[class*=name]","[class*=desc]",
+          "h1","h2","h3","h4","a"
+        ],isUsefulTitle);
+
+        if(!title){
+          const candidates=[...item.querySelectorAll("p,span,strong")]
+            .map(el=>clean(el.innerText||el.textContent))
+            .filter(isUsefulTitle)
+            .sort((a,b)=>b.length-a.length);
+          title=candidates[0]||"";
+        }
+
+        const seller=extractFirstText(
+          ["[class*=seller]","[class*=shop]","[class*=store]","[class*=merchant]"],
+          text=>text.length<=100 && text!==title
+        );
+        const sales=extractFirstText(
+          ["[class*=sales]","[class*=sold]","[class*=deal]","[class*=volume]"],
+          text=>text.length<=80 && text!==price
+        );
+        const rating=extractFirstText(
+          ["[class*=rating]","[class*=score]","[class*=star]"],
+          text=>text.length<=40
+        );
+
+        const link=item.matches("a[href]") ? item : item.querySelector("a[href]");
+        const img=item.querySelector("img");
+        const imageUrl=img?.currentSrc||img?.src||"";
+
+        const out={};
+        if(title) out.Title=title;
+        if(price) out.Price=price;
+        if(seller) out.Seller=seller;
+        if(sales) out.Sales=sales;
+        if(rating) out.Rating=rating;
+        if(link?.href) out.URL=link.href;
+        if(imageUrl) out.Image=imageUrl;
+
+        if(!Object.keys(out).length && allText) out.Title=allText.slice(0,220);
+        return out;
+      };
+
+      const matchesItem = child => {
+        if(!child || child.nodeType!==1) return false;
+        if(source?.itemTag && child.tagName.toLowerCase()!==source.itemTag) return false;
+        const classes=Array.isArray(source?.itemClasses) ? source.itemClasses : [];
+        if(classes.length && !classes.every(name=>child.classList.contains(name))) return false;
+        return true;
+      };
+
+      const collectNow=()=>{
+        if(datasetType==="table" && source?.selector){
+          const table=document.querySelector(source.selector);
+          if(!table) return 0;
+          const rowEls=[...table.querySelectorAll("tr")];
+          if(!rowEls.length) return 0;
+          const firstCells=[...rowEls[0].querySelectorAll("th,td")];
+          const hasHeaders=rowEls[0].querySelectorAll("th").length>0;
+          const headers=firstCells.map((cell,i)=>hasHeaders ? clean(cell.innerText) || `Column ${i+1}` : `Column ${i+1}`);
+          for(const tr of rowEls.slice(hasHeaders?1:0)){
+            const cells=[...tr.querySelectorAll("th,td")].map(cell=>clean(cell.innerText));
+            if(!cells.some(Boolean)) continue;
+            const out={};
+            headers.forEach((header,i)=>out[header]=cells[i]||"");
+            addRow(out);
+          }
+          return rows.size;
+        }
+
+        if(datasetType==="repeated" && source?.parentSelector){
+          const parent=document.querySelector(source.parentSelector);
+          if(!parent) return 0;
+          let children=[...parent.children].filter(matchesItem);
+          if(!children.length && Array.isArray(source.childIndexes)){
+            const all=[...parent.children];
+            children=source.childIndexes.map(i=>all[i]).filter(Boolean);
+          }
+          children.forEach(child=>addRow(extractRepeatedItem(child)));
+          return rows.size;
+        }
+        return 0;
+      };
+
+      const originalY=window.scrollY;
+      let noGrowth=0;
+      let rounds=0;
+      let previousSize=collectNow();
+      let previousHeight=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
+
+      for(let round=0;round<maxRounds;round++){
+        rounds=round+1;
+        const height=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
+        window.scrollTo({top:height,behavior:"smooth"});
+        await sleep(1250);
+
+        const size=collectNow();
+        const nextHeight=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
+
+        if(size===previousSize && nextHeight===previousHeight) noGrowth++;
+        else noGrowth=0;
+
+        previousSize=size;
+        previousHeight=nextHeight;
+        if(noGrowth>=2) break;
+      }
+
+      collectNow();
+      window.scrollTo({top:originalY,behavior:"auto"});
+
+      return {
+        rows:[...rows.values()],
+        rounds,
+        stoppedEarly:noGrowth>=2,
+        count:rows.size
+      };
+    }
+  });
+
+  return result?.[0]?.result || {rows:[],rounds:0,count:0,stoppedEarly:false};
 }
 
 els.scan.addEventListener("click", scanCurrentPage);
@@ -1165,6 +1359,51 @@ els.forgetRecipe.addEventListener("click", async () => {
   dataset.appliedRecipeKey="";
   await updateRecipeUi(dataset);
   showStatus("Saved settings removed. Current preview is unchanged.","success");
+});
+
+els.collectMore.addEventListener("click", async () => {
+  if (!requirePro()) return;
+
+  const dataset=activeDataset();
+  if(!dataset?.source){
+    showStatus("Scan and choose a dataset before collecting more.","error");
+    return;
+  }
+
+  const oldText=els.collectMore.textContent;
+  els.collectMore.disabled=true;
+  els.scan.disabled=true;
+  els.collectMore.textContent="Collecting…";
+  showStatus("Auto-scrolling the page and collecting newly loaded rows. Please keep this tab open.");
+
+  try{
+    const result=await collectMoreFromPage(dataset,els.scrollRounds.value);
+    const before=(dataset.originalRows||dataset.rows).length;
+    dataset.originalRows=mergeCollectedRows(dataset,result.rows);
+    dataset.rows=cleanupDataset(dataset,dataset.cleanupOptions||currentCleanupOptions());
+    const after=dataset.rows.length;
+
+    renderDataset();
+    renderFieldEditor();
+
+    const added=Math.max(0,after-before);
+    const suffix=result.stoppedEarly
+      ? ` Stopped early after ${result.rounds} scrolls because no more rows appeared.`
+      : ` Completed ${result.rounds} scrolls.`;
+
+    showStatus(
+      added
+        ? `Collected ${added} new row${added===1?"":"s"}; ${after} total.${suffix}`
+        : `No new rows were found; ${after} total.${suffix}`,
+      added ? "success" : ""
+    );
+  }catch(error){
+    showStatus("Could not collect more rows: "+error.message,"error");
+  }finally{
+    els.collectMore.disabled=false;
+    els.scan.disabled=false;
+    els.collectMore.textContent=isPro ? "Auto-scroll & collect" : "Auto-scroll & collect 🔒";
+  }
 });
 
 els.activate.addEventListener("click", () => chrome.runtime.openOptionsPage());

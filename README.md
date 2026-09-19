@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **v0.4.1 saved settings build**
+Repository status: **v0.5 infinite-scroll collection build**
 
 ## Phase 1 features
 
@@ -20,6 +20,12 @@ Repository status: **v0.4.1 saved settings build**
   - reset configuration
 - Highlight the detected source region on the active webpage
 - In-popup data preview
+- Pro auto-scroll collection:
+  - collect newly loaded rows while scrolling
+  - de-duplicate collected rows
+  - stop early after two no-growth rounds
+  - return to the original scroll position
+  - keep field and cleanup configuration
 - Saved settings / recipe:
   - save field selection
   - save renamed columns
@@ -95,7 +101,6 @@ No broad `<all_urls>` permission is used.
 
 These are planned Pro features and are **not** part of the MVP yet:
 
-- infinite-scroll automation
 - multi-page crawling
 - Edge / Firefox packaging
 - automated tests

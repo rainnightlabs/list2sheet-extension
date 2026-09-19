@@ -136,22 +136,91 @@ function cleanRows(dataset,rows){
   return next;
 }
 
-async function detectNext(tabId){
+async function detectNext(tabId,frameId=0){
   const result=await chrome.scripting.executeScript({
-    target:{tabId},
+    target:{tabId,frameIds:[Number(frameId)||0]},
     func:()=>{
       const clean=value=>String(value??"").replace(/\s+/g," ").trim();
-      const disabled=el =>
+      const visible=el=>{
+        if(!el||el.nodeType!==1) return false;
+        const style=getComputedStyle(el);
+        const rect=el.getBoundingClientRect();
+        return style.display!=="none" && style.visibility!=="hidden" &&
+          Number(style.opacity||1)!==0 && rect.width>0 && rect.height>0;
+      };
+      const disabled=el=>
         el.hasAttribute("disabled") ||
         el.getAttribute("aria-disabled")==="true" ||
-        /disabled|is-disabled|pagination-disabled/i.test(el.className||"");
+        /disabled|is-disabled|pagination-disabled/i.test(String(el.className||""));
 
-      const candidates=[...document.querySelectorAll(
-        'a[rel="next"],a,button,[role="button"]'
-      )].filter(el=>!disabled(el));
+      const cssPath=element=>{
+        if(!element||element.nodeType!==1) return "";
+        if(element.id) return "#"+CSS.escape(element.id);
+        const parts=[];
+        let node=element;
+        while(node&&node.nodeType===1&&node!==document.documentElement){
+          let part=node.tagName.toLowerCase();
+          const classes=[...node.classList]
+            .filter(name=>name&&name.length<50)
+            .slice(0,2);
+          if(classes.length) part+=classes.map(name=>"."+CSS.escape(name)).join("");
+          const parent=node.parentElement;
+          if(parent){
+            const same=[...parent.children].filter(child=>child.tagName===node.tagName);
+            if(same.length>1) part+=`:nth-of-type(${same.indexOf(node)+1})`;
+          }
+          parts.unshift(part);
+          const candidate=parts.join(" > ");
+          try{
+            if(document.querySelectorAll(candidate).length===1) return candidate;
+          }catch{}
+          node=parent;
+          if(parts.length>=8) break;
+        }
+        return parts.join(" > ");
+      };
+
+      const all=[...document.querySelectorAll("a,button,[role=button],[role=link]")]
+        .filter(el=>visible(el)&&!disabled(el));
+
+      const contextScore=el=>{
+        let score=0;
+        const parent=el.closest(
+          '[class*="pagination"],[class*="pager"],[class*="page-"],[class*="pages"],nav,[role="navigation"]'
+        );
+        if(parent) score+=100;
+        const context=[
+          el.className||"",
+          el.parentElement?.className||"",
+          el.parentElement?.parentElement?.className||"",
+          el.getAttribute("aria-label")||"",
+          el.getAttribute("title")||""
+        ].join(" ");
+        if(/pagination|pager|page-item|page-link|pages|pagenum|page-number/i.test(context)) score+=90;
+        return score;
+      };
+
+      const currentCandidates=all.filter(el=>{
+        const text=clean(el.innerText||el.textContent);
+        const cls=String(el.className||"")+" "+String(el.parentElement?.className||"");
+        return /^\d{1,6}$/.test(text) && (
+          el.getAttribute("aria-current")==="page" ||
+          /(^|\s)(active|current|selected)(\s|$)/i.test(cls) ||
+          (disabled(el) && /^\d+$/.test(text))
+        );
+      });
+
+      let currentPage=0;
+      for(const el of currentCandidates){
+        const n=Number(clean(el.innerText||el.textContent));
+        if(Number.isFinite(n)&&n>0){
+          currentPage=n;
+          break;
+        }
+      }
 
       const scored=[];
-      for(const el of candidates){
+      for(const el of all){
         const text=clean(el.innerText||el.textContent);
         const aria=clean(el.getAttribute("aria-label"));
         const title=clean(el.getAttribute("title"));
@@ -159,44 +228,104 @@ async function detectNext(tabId){
         const cls=clean(el.className);
         const combined=[text,aria,title,rel,cls].join(" ");
 
-        let score=0;
-        if(rel.toLowerCase().split(/\s+/).includes("next")) score+=200;
-        if(/(^|\s)(next|next page)(\s|$)/i.test(combined)) score+=120;
-        if(/下一页|下页|后一页|下一頁|次へ|次頁|다음/i.test(combined)) score+=140;
-        if(/pagination.*next|next.*pagination/i.test(combined)) score+=80;
-        if(/^(>|›|»|→)$/.test(text)) score+=45;
+        let score=contextScore(el);
 
-        // Avoid obvious non-pagination controls.
-        if(/next image|next slide|carousel|banner|video|track/i.test(combined)) score-=120;
+        if(rel.toLowerCase().split(/\s+/).includes("next")) score+=260;
+        if(/(^|\s)(next|next page)(\s|$)/i.test(combined)) score+=180;
+        if(/下一页|下页|后一页|下一頁|次へ|次頁|다음/i.test(combined)) score+=200;
+        if(/pagination.*next|next.*pagination/i.test(combined)) score+=110;
+        if(/^(>|›|»|→)$/.test(text)) score+=100;
 
-        if(score<=0) continue;
+        const pageNumber=/^\d{1,6}$/.test(text)?Number(text):0;
+        if(pageNumber){
+          if(currentPage && pageNumber===currentPage+1) score+=240;
+          else if(!currentPage && pageNumber===2) score+=150;
+          else if(currentPage && pageNumber>currentPage) score+=Math.max(20,100-(pageNumber-currentPage)*10);
+        }
 
-        const href=el.tagName==="A" ? el.href : "";
+        if(/next image|next slide|carousel|banner|video|track|下一张|轮播/i.test(combined)) score-=260;
+        if(score<=80) continue;
+
+        let href="";
+        if(el.tagName==="A"){
+          const raw=el.getAttribute("href")||"";
+          if(raw && !/^javascript:/i.test(raw) && raw!=="#" && !raw.startsWith("#")){
+            try{
+              const resolved=new URL(raw,location.href);
+              if(/^https?:$/.test(resolved.protocol) && resolved.origin===location.origin && resolved.href!==location.href){
+                href=resolved.href;
+                score+=30;
+              }
+            }catch{}
+          }
+        }
+
         scored.push({
           score,
           href,
-          text:text||aria||title||"Next"
+          selector:cssPath(el),
+          text:text||aria||title||"Next",
+          pageNumber:pageNumber||null
         });
       }
 
       scored.sort((a,b)=>b.score-a.score);
-      const best=scored[0];
-      if(!best) return null;
-
-      if(best.href){
-        try{
-          const current=new URL(location.href);
-          const next=new URL(best.href,current.href);
-          if(next.origin!==current.origin) return null;
-          if(next.href===current.href) return null;
-          return {href:next.href,label:best.text};
-        }catch{return null;}
-      }
-
-      return null;
+      return scored[0]||null;
     }
   });
   return result?.[0]?.result||null;
+}
+
+async function clickNextControl(tabId,frameId,selector){
+  const result=await chrome.scripting.executeScript({
+    target:{tabId,frameIds:[Number(frameId)||0]},
+    args:[selector],
+    func:(selector)=>{
+      let element=null;
+      try{element=document.querySelector(selector);}catch{}
+      if(!element) return {clicked:false};
+      const beforeUrl=location.href;
+      element.scrollIntoView({block:"center",inline:"nearest"});
+      element.click();
+      return {clicked:true,beforeUrl};
+    }
+  });
+  return result?.[0]?.result||{clicked:false};
+}
+
+function datasetFingerprint(dataset){
+  if(!dataset) return "";
+  const headers=dataset.headers||[];
+  return (dataset.rows||[]).slice(0,3)
+    .map(row=>headers.map(header=>clean(row[header])).join("¦"))
+    .join("¶");
+}
+
+async function waitForDatasetChange(task,template,frameId,beforeFingerprint){
+  for(let attempt=0;attempt<24;attempt++){
+    await sleep(450);
+
+    const latest=await getTask(task.tabId);
+    if(!latest||latest.status!=="running") return null;
+    if(latest.step!=="waiting_dynamic") return null;
+
+    try{
+      const scanned=await scanPage(task.tabId,frameId);
+      const matched=matchDataset(template,scanned);
+      if(!matched) continue;
+
+      const fingerprint=datasetFingerprint(matched);
+      if(
+        fingerprint!==beforeFingerprint ||
+        (matched.rows?.length||0)!==(template.rows?.length||0)
+      ){
+        return matched;
+      }
+    }catch{
+      // Navigation or a transient render can briefly make the frame unavailable.
+    }
+  }
+  return null;
 }
 
 async function scanPage(tabId,frameId=0){
@@ -224,27 +353,77 @@ async function navigateToNext(task){
   const latest=await getTask(task.tabId);
   if(!latest||latest.status!=="running") return;
 
-  const next=await detectNext(task.tabId);
-  if(!next?.href){
-    await completeTask(latest,"complete","No further same-site Next-page link was found.");
+  const state=await getSession(stateKey(task.tabId));
+  if(!state||!Array.isArray(state.datasets)||!state.datasets.length){
+    await completeTask(latest,"error","The saved dataset session was not available.");
     return;
   }
 
-  latest.step="waiting_navigation";
-  latest.nextUrl=next.href;
-  latest.nextLabel=next.label;
+  const index=Math.max(0,Math.min(Number(state.currentIndex)||0,state.datasets.length-1));
+  const template=state.datasets[index];
+  const frameId=Number(template.source?.frameId)||0;
+
+  const next=await detectNext(task.tabId,frameId);
+  if(!next){
+    await completeTask(latest,"complete","No further Next-page control was found.");
+    return;
+  }
+
+  latest.nextLabel=next.text||"Next";
+  latest.nextPageNumber=next.pageNumber||null;
+  latest.nextSelector=next.selector||"";
+  latest.nextUrl=next.href||"";
+  latest.frameId=frameId;
+
+  // Normal top-frame links are still the most reliable path.
+  if(next.href && frameId===0){
+    latest.step="waiting_navigation";
+    await saveTask(latest);
+    try{
+      await chrome.tabs.update(task.tabId,{url:next.href});
+    }catch(error){
+      await completeTask(latest,"error","Navigation failed: "+error.message);
+    }
+    return;
+  }
+
+  // JavaScript/Ajax pagination and iframe pagination are clicked in place.
+  if(!next.selector){
+    await completeTask(latest,"complete","A Next-page control was found, but it could not be activated.");
+    return;
+  }
+
+  const beforeFingerprint=datasetFingerprint(template);
+  latest.step="waiting_dynamic";
   await saveTask(latest);
 
-  try{
-    await chrome.tabs.update(task.tabId,{url:next.href});
-  }catch(error){
-    await completeTask(latest,"error","Navigation failed: "+error.message);
+  const clickResult=await clickNextControl(task.tabId,frameId,next.selector);
+  if(!clickResult?.clicked){
+    await completeTask(latest,"error","The detected Next-page control could not be clicked.");
+    return;
   }
+
+  const changed=await waitForDatasetChange(latest,template,frameId,beforeFingerprint);
+  const afterClickTask=await getTask(task.tabId);
+  if(!afterClickTask||afterClickTask.status!=="running") return;
+
+  // If tabs.onUpdated already handled a full navigation, do not process twice.
+  if(afterClickTask.step!=="waiting_dynamic") return;
+
+  if(!changed){
+    await completeTask(afterClickTask,"complete","The Next-page control was clicked, but the selected dataset did not change.");
+    return;
+  }
+
+  await processLoadedPage(task.tabId,changed);
 }
 
-async function processLoadedPage(tabId){
+async function processLoadedPage(tabId,preScannedMatch=null){
   let task=await getTask(tabId);
-  if(!task||task.status!=="running"||task.step!=="waiting_navigation") return;
+  if(!task||task.status!=="running"||!["waiting_navigation","waiting_dynamic"].includes(task.step)) return;
+
+  task.step="processing_page";
+  await saveTask(task);
 
   // Give client-rendered result grids a short moment after load.
   await sleep(900);
@@ -260,15 +439,17 @@ async function processLoadedPage(tabId){
   const index=Math.max(0,Math.min(Number(state.currentIndex)||0,state.datasets.length-1));
   const template=state.datasets[index];
 
-  let scanned;
-  try{
-    scanned=await scanPage(tabId,template.source?.frameId||0);
-  }catch(error){
-    await completeTask(task,"error","Could not scan the next page: "+error.message);
-    return;
+  let matched=preScannedMatch;
+  if(!matched){
+    let scanned;
+    try{
+      scanned=await scanPage(tabId,template.source?.frameId||0);
+    }catch(error){
+      await completeTask(task,"error","Could not scan the next page: "+error.message);
+      return;
+    }
+    matched=matchDataset(template,scanned);
   }
-
-  const matched=matchDataset(template,scanned);
   if(!matched){
     await completeTask(task,"complete","The next page loaded, but the selected dataset could not be matched.");
     return;
@@ -355,15 +536,13 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
       };
       await saveTask(task);
 
-      const next=await detectNext(tabId);
-      if(!next?.href){
-        await completeTask(task,"complete","No same-site Next-page link was detected on this page.");
-        sendResponse({ok:false,error:"No same-site Next-page link was detected on this page."});
+      await navigateToNext(task);
+      const started=await getTask(tabId);
+      if(started?.status==="complete" && started?.pagesVisited===0){
+        sendResponse({ok:false,error:started.reason||"No Next-page control was detected on this page."});
         return;
       }
-
-      await navigateToNext(task);
-      sendResponse({ok:true,task:await getTask(tabId)});
+      sendResponse({ok:true,task:started});
       return;
     }
 
@@ -374,7 +553,12 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
 
 chrome.tabs.onUpdated.addListener((tabId,changeInfo)=>{
   if(changeInfo.status!=="complete") return;
-  processLoadedPage(tabId).catch(async error=>{
+  (async()=>{
+    const task=await getTask(tabId);
+    if(!task||task.status!=="running"||task.step!=="waiting_navigation") return;
+    await sleep(900);
+    await processLoadedPage(tabId);
+  })().catch(async error=>{
     const task=await getTask(tabId);
     if(task&&task.status==="running"){
       await completeTask(task,"error",error.message);

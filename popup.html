@@ -91,6 +91,28 @@
         <p class="fieldHint">The page scrolls automatically, collects newly loaded rows, de-duplicates them, then returns to your original position. It stops early after two rounds with no growth.</p>
       </section>
 
+      <section class="paginationCard">
+        <div class="collectorHead">
+          <div>
+            <strong>Collect next pages</strong>
+            <span class="proMini">PRO</span>
+          </div>
+          <span id="paginationStats" class="muted"></span>
+        </div>
+        <div class="collectorControls">
+          <select id="pageCount">
+            <option value="2">Next 2 pages</option>
+            <option value="5" selected>Next 5 pages</option>
+            <option value="10">Next 10 pages</option>
+          </select>
+          <button id="collectPagesButton" class="button" type="button">Collect next pages</button>
+        </div>
+        <div class="paginationFooter">
+          <span id="paginationStatus" class="fieldHint">Works with normal same-site Next-page links. The task keeps running even when the popup closes during navigation.</span>
+          <button id="stopPagesButton" class="textButton" type="button" hidden>Stop</button>
+        </div>
+      </section>
+
       <div id="limitNotice" class="notice" hidden>
         Free plan previews and copies up to 100 rows. Activate Pro for unlimited rows and file exports.
       </div>

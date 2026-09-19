@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **v0.5.2 session + preview reliability build**
+Repository status: **v0.6 multi-page collection build**
 
 ## Phase 1 features
 
@@ -23,6 +23,14 @@ Repository status: **v0.5.2 session + preview reliability build**
   - explicit "Showing X of Y rows"
   - 12 / 50 / All preview modes
   - preview limit does not affect export
+- Pro multi-page collection:
+  - background service worker keeps the task alive while the popup closes during navigation
+  - detects same-site Next-page links
+  - collect 2 / 5 / 10 next pages
+  - reuses the same extraction engine on every page
+  - de-duplicates and merges into the current session dataset
+  - shows task progress when the popup is reopened
+  - user can stop a running task
 - Pro auto-scroll collection:
   - reuses the same extraction engine as the normal Scan button on every round
   - re-selects the matching dataset after lazy loading
@@ -107,7 +115,6 @@ No broad `<all_urls>` permission is used.
 
 These are planned Pro features and are **not** part of the MVP yet:
 
-- multi-page crawling
 - Edge / Firefox packaging
 - automated tests
 
@@ -131,3 +138,10 @@ admin@rainnightlabs.com
 - Closing and reopening the extension popup on the same page restores collected rows, headers, field configuration, cleanup state, and selected dataset.
 - Session state is page-specific and intentionally expires with the browser session; long-term reusable rules still live in Saved Settings.
 - Column configuration is sanitized during restore so renamed headers cannot disappear because of incomplete popup state.
+
+
+## v0.6 pagination architecture
+
+Traditional pagination closes the extension popup when the tab navigates, so pagination is handled by a Manifest V3 background service worker rather than the popup itself.
+
+The first pagination release intentionally follows only normal same-origin Next links. JavaScript-only pagination buttons and anti-bot protected sites will be handled separately after this path is proven stable.

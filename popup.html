@@ -95,6 +95,17 @@
         Free plan previews and copies up to 100 rows. Activate Pro for unlimited rows and file exports.
       </div>
 
+      <div class="previewBar">
+        <span id="previewMeta" class="muted"></span>
+        <label class="previewLimitLabel">
+          Preview
+          <select id="previewLimit">
+            <option value="12" selected>12</option>
+            <option value="50">50</option>
+            <option value="all">All</option>
+          </select>
+        </label>
+      </div>
       <div class="tableWrap">
         <table id="previewTable"></table>
       </div>

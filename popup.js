@@ -367,6 +367,31 @@ function markRecipeDirty() {
   els.recipeStatus.textContent = "Settings changed. Save to reuse them after the next scan.";
 }
 
+async function scanTabFrames(tabId) {
+  const results=await chrome.scripting.executeScript({
+    target:{tabId,allFrames:true},
+    func:extractPageDatasets
+  });
+
+  const merged=[];
+  for(const frameResult of results||[]){
+    const frameId=Number(frameResult.frameId)||0;
+    for(const dataset of frameResult.result||[]){
+      dataset.source=dataset.source||{};
+      dataset.source.frameId=frameId;
+      dataset.meta={...(dataset.meta||{}),frameId};
+      merged.push(dataset);
+    }
+  }
+  merged.sort((a,b)=>(b.score||0)-(a.score||0));
+  return merged;
+}
+
+function scriptTargetForDataset(tabId,dataset){
+  const frameId=Number(dataset?.source?.frameId)||0;
+  return {tabId,frameIds:[frameId]};
+}
+
 async function scanCurrentPage() {
   hideStatus();
   els.scan.disabled = true;
@@ -383,12 +408,7 @@ async function scanCurrentPage() {
       currentPageHost = "";
     }
 
-    const result = await chrome.scripting.executeScript({
-      target:{tabId:tab.id},
-      func:extractPageDatasets
-    });
-
-    datasets = result?.[0]?.result || [];
+    datasets = await scanTabFrames(tab.id);
     datasets.forEach(dataset => {
       dataset.originalRows = dataset.rows.map(row => ({...row}));
       dataset.cleanupOptions = defaultCleanupOptions();
@@ -930,8 +950,10 @@ async function collectMoreFromPage(dataset, maxRounds) {
   const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
   if (!tab?.id) throw new Error("No active tab found.");
 
+  const datasetTarget=scriptTargetForDataset(tab.id,dataset);
+
   const originalPositionResult = await chrome.scripting.executeScript({
-    target:{tabId:tab.id},
+    target:datasetTarget,
     func:() => ({
       y: window.scrollY,
       height: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)
@@ -996,7 +1018,7 @@ async function collectMoreFromPage(dataset, maxRounds) {
       rounds=round+1;
 
       await chrome.scripting.executeScript({
-        target:{tabId:tab.id},
+        target:datasetTarget,
         func:() => {
           const height=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
           window.scrollTo({top:height,behavior:"smooth"});
@@ -1008,7 +1030,7 @@ async function collectMoreFromPage(dataset, maxRounds) {
 
       // Re-run the exact same extraction engine used by the normal Scan button.
       const scanResult = await chrome.scripting.executeScript({
-        target:{tabId:tab.id},
+        target:datasetTarget,
         func:extractPageDatasets
       });
       const scannedDatasets=scanResult?.[0]?.result || [];
@@ -1016,7 +1038,7 @@ async function collectMoreFromPage(dataset, maxRounds) {
       if (matched) addRows(matched.rows);
 
       const heightResult = await chrome.scripting.executeScript({
-        target:{tabId:tab.id},
+        target:datasetTarget,
         func:() => Math.max(document.body.scrollHeight,document.documentElement.scrollHeight)
       });
       const nextHeight=heightResult?.[0]?.result || previousHeight;
@@ -1032,7 +1054,7 @@ async function collectMoreFromPage(dataset, maxRounds) {
     }
   } finally {
     await chrome.scripting.executeScript({
-      target:{tabId:tab.id},
+      target:datasetTarget,
       args:[originalY],
       func:(y) => window.scrollTo({top:y,behavior:"auto"})
     }).catch(()=>{});
@@ -1116,7 +1138,7 @@ els.highlight.addEventListener("click", async () => {
     if (!tab?.id) throw new Error("No active tab found.");
 
     const result = await chrome.scripting.executeScript({
-      target:{tabId:tab.id},
+      target:scriptTargetForDataset(tab.id,dataset),
       args:[dataset.source],
       func:(source) => {
         const targets = [];
@@ -1130,6 +1152,13 @@ els.highlight.addEventListener("click", async () => {
             for (const index of source.childIndexes || []) {
               if (children[index]) targets.push(children[index]);
             }
+          }
+        } else if (source?.kind === "search" && Array.isArray(source.selectors)) {
+          for (const selector of source.selectors) {
+            try {
+              const element=document.querySelector(selector);
+              if(element) targets.push(element);
+            } catch {}
           }
         }
 

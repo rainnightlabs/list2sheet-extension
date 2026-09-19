@@ -199,12 +199,18 @@ async function detectNext(tabId){
   return result?.[0]?.result||null;
 }
 
-async function scanPage(tabId){
+async function scanPage(tabId,frameId=0){
   const result=await chrome.scripting.executeScript({
-    target:{tabId},
+    target:{tabId,frameIds:[Number(frameId)||0]},
     func:extractPageDatasets
   });
-  return result?.[0]?.result||[];
+  const datasets=result?.[0]?.result||[];
+  for(const dataset of datasets){
+    dataset.source=dataset.source||{};
+    dataset.source.frameId=Number(frameId)||0;
+    dataset.meta={...(dataset.meta||{}),frameId:Number(frameId)||0};
+  }
+  return datasets;
 }
 
 async function completeTask(task,status,reason=""){
@@ -256,7 +262,7 @@ async function processLoadedPage(tabId){
 
   let scanned;
   try{
-    scanned=await scanPage(tabId);
+    scanned=await scanPage(tabId,template.source?.frameId||0);
   }catch(error){
     await completeTask(task,"error","Could not scan the next page: "+error.message);
     return;

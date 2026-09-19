@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **v0.5.1 collection reliability fix**
+Repository status: **v0.5.2 session + preview reliability build**
 
 ## Phase 1 features
 
@@ -19,7 +19,10 @@ Repository status: **v0.5.1 collection reliability fix**
   - reorder columns
   - reset configuration
 - Highlight the detected source region on the active webpage
-- In-popup data preview
+- In-popup data preview:
+  - explicit "Showing X of Y rows"
+  - 12 / 50 / All preview modes
+  - preview limit does not affect export
 - Pro auto-scroll collection:
   - reuses the same extraction engine as the normal Scan button on every round
   - re-selects the matching dataset after lazy loading
@@ -120,3 +123,11 @@ admin@rainnightlabs.com
 - Saved settings now use compatibility matching instead of requiring an exact header signature.
 - When a saved recipe matches multiple detected datasets, List2Sheet automatically selects the strongest match.
 - Infinite-scroll collection no longer uses a separate simplified extractor; every scroll round re-runs the main extraction engine, preventing Title/Price inconsistencies.
+
+
+## v0.5.2 session reliability
+
+- Current tab scan results are cached in `chrome.storage.session`.
+- Closing and reopening the extension popup on the same page restores collected rows, headers, field configuration, cleanup state, and selected dataset.
+- Session state is page-specific and intentionally expires with the browser session; long-term reusable rules still live in Saved Settings.
+- Column configuration is sanitized during restore so renamed headers cannot disappear because of incomplete popup state.

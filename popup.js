@@ -126,59 +126,95 @@ function extractPageDatasets() {
       let priceCount = 0;
       let buttonCount = 0;
 
-      const rows = items.map(item => {
-        const fields = [];
+      const extractFirstText = (item, selectors, predicate = () => true) => {
+        for (const selector of selectors) {
+          for (const el of item.querySelectorAll(selector)) {
+            const text = clean(el.innerText || el.textContent);
+            if (text && predicate(text, el)) return text;
+          }
+        }
+        return "";
+      };
 
+      const rows = items.map(item => {
         if (item.querySelector("img")) imageCount++;
         if (item.matches("a[href]") || item.querySelector("a[href]")) linkCount++;
         if (item.querySelector("button,[role=button]")) buttonCount++;
         if (pricePattern.test(clean(item.innerText))) priceCount++;
 
-        const preferredSelectors = [
-          "[class*=title]","[class*=name]","[class*=price]","[class*=amount]",
-          "h1","h2","h3","h4","h5","h6","strong","p","span","a","small"
-        ];
+        const allText = clean(item.innerText);
+        const priceMatch = allText.match(/(?:[$€£¥￥]\s*\d[\d,.]*(?:\.\d+)?|\d[\d,.]*(?:\.\d+)?\s*(?:USD|EUR|GBP|CNY|RMB|元|円))/i);
+        const price = priceMatch ? clean(priceMatch[0]) : "";
 
-        const nodes = [];
-        for (const selector of preferredSelectors) {
-          for (const el of item.querySelectorAll(selector)) {
-            if (el.children.length === 0 || selector.startsWith("[class*=")) nodes.push(el);
-          }
+        const isUsefulTitle = (text) =>
+          text.length >= 3 &&
+          text.length <= 180 &&
+          !/^[¥￥$€£]?\s*\d[\d,.]*$/.test(text) &&
+          !/^(¥|￥|\$|€|£)$/.test(text);
+
+        let title = extractFirstText(item, [
+          "[class*=title]","[class*=name]","[class*=desc]",
+          "h1","h2","h3","h4","a"
+        ], isUsefulTitle);
+
+        if (!title) {
+          const candidates = [...item.querySelectorAll("p,span,strong")]
+            .map(el => clean(el.innerText || el.textContent))
+            .filter(isUsefulTitle)
+            .sort((a,b) => b.length - a.length);
+          title = candidates[0] || "";
         }
 
-        for (const el of nodes) {
+        const seller = extractFirstText(item, [
+          "[class*=seller]","[class*=shop]","[class*=store]","[class*=merchant]"
+        ], text => text.length <= 100 && text !== title);
+
+        const sales = extractFirstText(item, [
+          "[class*=sales]","[class*=sold]","[class*=deal]","[class*=volume]"
+        ], text => text.length <= 80 && text !== price);
+
+        const rating = extractFirstText(item, [
+          "[class*=rating]","[class*=score]","[class*=star]"
+        ], text => text.length <= 40);
+
+        const link = item.matches("a[href]") ? item : item.querySelector("a[href]");
+        const img = item.querySelector("img");
+        const imageUrl = img?.currentSrc || img?.src || "";
+
+        const used = new Set([title, price, seller, sales, rating].filter(Boolean));
+        const extras = [];
+        const leafNodes = [...item.querySelectorAll("span,p,strong,small,em,i")]
+          .filter(el => el.children.length === 0);
+
+        for (const el of leafNodes) {
           const text = clean(el.innerText || el.textContent);
-          if (!text || text.length > 220 || fields.includes(text)) continue;
-          fields.push(text);
-          if (fields.length >= 7) break;
-        }
-
-        if (!fields.length) {
-          const text = clean(item.innerText);
-          if (text && text.length <= 500) fields.push(text);
+          if (!text || text.length > 120 || used.has(text)) continue;
+          if (/^(¥|￥|\$|€|£)$/.test(text)) continue;
+          if (/^[¥￥$€£]?\s*\d[\d,.]*$/.test(text)) continue;
+          if (price && (text === price || price.includes(text))) continue;
+          used.add(text);
+          extras.push(text);
+          if (extras.length >= 3) break;
         }
 
         const out = {};
-        fields.forEach((value, i) => out[`Field ${i + 1}`] = value);
-
-        const link = item.matches("a[href]") ? item : item.querySelector("a[href]");
+        if (title) out.Title = title;
+        if (price) out.Price = price;
+        if (seller) out.Seller = seller;
+        if (sales) out.Sales = sales;
+        if (rating) out.Rating = rating;
+        extras.forEach((value, index) => out[`Extra ${index + 1}`] = value);
         if (link?.href) out.URL = link.href;
-
-        const img = item.querySelector("img");
-        const imageUrl = img?.currentSrc || img?.src;
         if (imageUrl) out.Image = imageUrl;
 
+        if (!Object.keys(out).length && allText) out.Title = allText.slice(0, 220);
         return out;
       }).filter(row => Object.values(row).some(Boolean));
 
       if (rows.length < 3) continue;
 
-      const maxFields = Math.min(7, Math.max(...rows.map(row =>
-        Object.keys(row).filter(key => key.startsWith("Field ")).length
-      )));
-      const headers = Array.from({length:maxFields}, (_, i) => `Field ${i + 1}`);
-      if (rows.some(row => row.URL)) headers.push("URL");
-      if (rows.some(row => row.Image)) headers.push("Image");
+      const preferredHeaders = ["Title","Price","Seller","Sales","Rating","Extra 1","Extra 2","Extra 3","URL","Image"];
+      const headers = preferredHeaders.filter(header => rows.some(row => clean(row[header])));
 
       const density = rows.reduce((sum,row) =>
         sum + headers.filter(header => clean(row[header])).length, 0

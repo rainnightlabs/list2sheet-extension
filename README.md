@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **v0.6.1 extraction accuracy build**
+Repository status: **v0.6.2 dynamic pagination build**
 
 ## Phase 1 features
 
@@ -160,3 +160,19 @@ This release pauses pagination feature expansion and improves the scanner first:
 - ARIA role=table / role=grid structures are recognized as data grids.
 - Navigation/sidebar and pagination lists are filtered more aggressively.
 - Normal scans inspect accessible same-origin frames and preserve the frame id for highlight and collection.
+
+
+## v0.6.2 dynamic pagination
+
+Pagination no longer requires a normal href-only Next link.
+
+Supported discovery now includes:
+
+- rel=next / Next / 下一页 links
+- right-arrow controls such as >, ›, » and →
+- the numeric page immediately after the active/current page
+- page 2 as a first-page fallback when no active marker is exposed
+- JavaScript/Ajax page buttons without navigable hrefs
+- pagination controls inside the same frame as the selected dataset
+
+For Ajax pagination, List2Sheet clicks the control and waits until the selected dataset changes before extracting and continuing.

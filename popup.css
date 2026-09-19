@@ -128,7 +128,7 @@ footer{
 }
 footer a{color:var(--muted);text-decoration:none}
 
-.datasetTools{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px}
+.datasetTools{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:9px}
 .fieldEditor{margin-top:10px;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
 .fieldEditorHead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;font-size:12px}
 .textButton{border:0;background:none;color:var(--accent);padding:3px 5px;cursor:pointer;font-size:11px}
@@ -138,3 +138,8 @@ footer a{color:var(--muted);text-decoration:none}
 .orderButton{width:29px;height:29px;padding:0;border:1px solid var(--line);border-radius:7px;background:#102139;color:var(--text);cursor:pointer}
 .orderButton:disabled{opacity:.3;cursor:not-allowed}
 .fieldHint{margin:8px 0 0;color:var(--muted);font-size:10px;line-height:1.45}
+
+.cleanupEditor{margin-top:10px;padding:11px;border:1px solid var(--line);border-radius:10px;background:var(--panel)}
+.cleanupOption{display:flex;align-items:center;gap:8px;margin:8px 0;color:var(--text);font-size:11px}
+.cleanupOption input{accent-color:#8fc6ff;width:15px;height:15px}
+.cleanupActions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}

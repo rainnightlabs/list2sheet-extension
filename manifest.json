@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "List2Sheet",
-  "version": "0.5.2",
+  "version": "0.6.0",
   "description": "Turn web tables, lists, and repeated cards into clean structured data.",
   "action": {
     "default_title": "List2Sheet",
@@ -11,9 +11,14 @@
   "permissions": [
     "activeTab",
     "scripting",
-    "storage"
+    "storage",
+    "tabs"
   ],
   "host_permissions": [
     "https://www.rainnightlabs.com/*"
-  ]
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  }
 }

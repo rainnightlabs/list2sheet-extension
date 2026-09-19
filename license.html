@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Activate List2Sheet Pro</title>
+  <link rel="stylesheet" href="license.css">
+</head>
+<body>
+  <main class="card">
+    <div class="brand">Rainnight Labs</div>
+    <h1>Activate List2Sheet Pro</h1>
+    <p class="lead">Use the purchase email and the <code>L2S1...</code> license generated after checkout.</p>
+
+    <form id="licenseForm">
+      <label>
+        Purchase email
+        <input id="email" type="email" autocomplete="email" required placeholder="you@example.com">
+      </label>
+      <label>
+        License
+        <textarea id="license" required rows="5" spellcheck="false" placeholder="L2S1..."></textarea>
+      </label>
+      <button id="activate" type="submit">Verify and activate</button>
+    </form>
+
+    <div id="message" class="message" hidden></div>
+
+    <section id="activeLicense" class="active" hidden>
+      <strong>Pro is active</strong>
+      <p id="activeEmail"></p>
+      <button id="deactivate" class="secondary">Deactivate on this browser</button>
+    </section>
+
+    <p class="help">
+      Need a license?
+      <a href="https://www.rainnightlabs.com/pricing/" target="_blank">Open Rainnight Labs pricing</a>.
+    </p>
+  </main>
+
+  <script type="module" src="license.js"></script>
+</body>
+</html>

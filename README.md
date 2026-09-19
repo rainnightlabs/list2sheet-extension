@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **MVP / validation build**
+Repository status: **v0.3 productization build**
 
 ## Phase 1 features
 
@@ -12,6 +12,13 @@ Repository status: **MVP / validation build**
   - HTML tables
   - repeated sibling/card structures
 - Dataset chooser
+- Semantic product fields (Title / Price / Seller / Sales / Rating / URL / Image)
+- Field editor:
+  - include / exclude columns
+  - rename export columns
+  - reorder columns
+  - reset configuration
+- Highlight the detected source region on the active webpage
 - In-popup data preview
 - Free plan:
   - up to 100 rows
@@ -77,7 +84,6 @@ These are planned Pro features and are **not** part of the MVP yet:
 - saved extraction recipes
 - infinite-scroll automation
 - multi-page crawling
-- field renaming / column editor
 - XLSX export
 - Edge / Firefox packaging
 - automated tests

@@ -1,0 +1,68 @@
+:root{
+  color-scheme:dark;
+  --bg:#07101c;
+  --panel:#101d31;
+  --text:#eef6ff;
+  --muted:#9cafc5;
+  --line:#2a405d;
+  --accent:#8fc6ff;
+  --success:#70e0ae;
+}
+*{box-sizing:border-box}
+body{
+  min-height:100vh;
+  margin:0;
+  padding:40px 20px;
+  display:grid;
+  place-items:center;
+  font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:radial-gradient(circle at 20% 0%,#123153,transparent 35%),var(--bg);
+  color:var(--text);
+}
+.card{
+  width:min(620px,100%);
+  padding:34px;
+  border:1px solid var(--line);
+  border-radius:22px;
+  background:rgba(16,29,49,.94);
+  box-shadow:0 28px 80px rgba(0,0,0,.35);
+}
+.brand{color:var(--accent);font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.14em}
+h1{margin:10px 0 8px;font-size:32px;letter-spacing:-.04em}
+.lead,.help{color:var(--muted);line-height:1.6}
+label{display:block;margin-top:18px;font-size:13px;font-weight:700}
+input,textarea{
+  width:100%;
+  margin-top:7px;
+  padding:12px;
+  border:1px solid var(--line);
+  border-radius:10px;
+  background:#081321;
+  color:var(--text);
+  font:inherit;
+}
+textarea{resize:vertical}
+button{
+  margin-top:18px;
+  min-height:44px;
+  padding:0 16px;
+  border:1px solid #9fd0ff;
+  border-radius:10px;
+  background:linear-gradient(180deg,#add9ff,#7dbbf2);
+  color:#06111d;
+  font-weight:800;
+  cursor:pointer;
+}
+button.secondary{background:#13243b;color:var(--text);border-color:#36587b}
+.message,.active{
+  margin-top:20px;
+  padding:14px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  color:var(--muted);
+}
+.message.success,.active{border-color:#34715d;color:var(--success)}
+.message.error{border-color:#75434c;color:#ffc1ca}
+.help{font-size:12px;margin-top:24px}
+a{color:var(--accent)}
+code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}

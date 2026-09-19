@@ -32,6 +32,23 @@
 
       <select id="datasetSelect"></select>
 
+      <div class="datasetTools">
+        <button id="highlightButton" class="button small">Highlight source</button>
+        <button id="toggleFieldsButton" class="button small">Edit fields</button>
+      </div>
+
+      <section id="fieldEditor" class="fieldEditor" hidden>
+        <div class="fieldEditorHead">
+          <strong>Fields</strong>
+          <div>
+            <button id="selectAllFields" class="textButton" type="button">Select all</button>
+            <button id="resetFields" class="textButton" type="button">Reset</button>
+          </div>
+        </div>
+        <div id="fieldList"></div>
+        <p class="fieldHint">Choose columns, rename them, and use ↑ / ↓ to change export order.</p>
+      </section>
+
       <div id="limitNotice" class="notice" hidden>
         Free plan previews and copies up to 100 rows. Activate Pro for unlimited rows and file exports.
       </div>

@@ -72,6 +72,25 @@
         <p class="fieldHint">Cleanup never changes the webpage. It only changes the dataset used for preview and export.</p>
       </section>
 
+      <section class="collectorCard">
+        <div class="collectorHead">
+          <div>
+            <strong>Collect more</strong>
+            <span class="proMini">PRO</span>
+          </div>
+          <span id="collectorStats" class="muted"></span>
+        </div>
+        <div class="collectorControls">
+          <select id="scrollRounds">
+            <option value="5">Up to 5 scrolls</option>
+            <option value="10" selected>Up to 10 scrolls</option>
+            <option value="20">Up to 20 scrolls</option>
+          </select>
+          <button id="collectMoreButton" class="button" type="button">Auto-scroll & collect</button>
+        </div>
+        <p class="fieldHint">The page scrolls automatically, collects newly loaded rows, de-duplicates them, then returns to your original position. It stops early after two rounds with no growth.</p>
+      </section>
+
       <div id="limitNotice" class="notice" hidden>
         Free plan previews and copies up to 100 rows. Activate Pro for unlimited rows and file exports.
       </div>

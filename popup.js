@@ -75,6 +75,46 @@ function recipeKey(dataset) {
   return [currentPageHost || "unknown", dataset?.type || "unknown", datasetKind(dataset), headers].join("|");
 }
 
+function recipeMatchScore(dataset, recipe) {
+  if (!dataset || !recipe) return -1;
+  if ((recipe.host || "") !== (currentPageHost || "")) return -1;
+  if (recipe.type && recipe.type !== dataset.type) return -1;
+
+  const datasetHeaders = new Set(dataset.headers || []);
+  const recipeColumns = Array.isArray(recipe.columns) ? recipe.columns : [];
+  const savedSources = recipeColumns.map(column => column.source).filter(Boolean);
+  const overlap = savedSources.filter(source => datasetHeaders.has(source)).length;
+  const overlapRatio = savedSources.length ? overlap / savedSources.length : 0;
+
+  let score = overlapRatio * 100;
+
+  const currentKind = datasetKind(dataset);
+  if (recipe.kind && recipe.kind === currentKind) score += 35;
+
+  const savedSignature = recipe.sourceHint?.signature || "";
+  const currentSignature = dataset.meta?.signature || "";
+  if (savedSignature && currentSignature && savedSignature === currentSignature) score += 120;
+
+  const savedTag = recipe.sourceHint?.itemTag || "";
+  const currentTag = dataset.source?.itemTag || "";
+  if (savedTag && currentTag && savedTag === currentTag) score += 15;
+
+  const savedClasses = Array.isArray(recipe.sourceHint?.itemClasses) ? recipe.sourceHint.itemClasses : [];
+  const currentClasses = new Set(Array.isArray(dataset.source?.itemClasses) ? dataset.source.itemClasses : []);
+  if (savedClasses.length) {
+    const classOverlap = savedClasses.filter(name => currentClasses.has(name)).length / savedClasses.length;
+    score += classOverlap * 40;
+  }
+
+  // A recipe must still share most of its source fields. This prevents a
+  // product recipe from being applied to an unrelated price/banner dataset.
+  if (savedSources.length && overlapRatio < 0.6 && !(savedSignature && savedSignature === currentSignature)) {
+    return -1;
+  }
+
+  return score;
+}
+
 async function loadRecipeMap() {
   const result = await chrome.storage.local.get(RECIPE_STORAGE_KEY);
   return result[RECIPE_STORAGE_KEY] || {};
@@ -135,21 +175,48 @@ function applyRecipeToDataset(dataset, recipe) {
   return true;
 }
 
+async function findBestRecipe(dataset, map = null) {
+  if (!dataset) return null;
+  const recipes = map || await loadRecipeMap();
+
+  // Prefer the exact legacy/current key first.
+  const exactKey = recipeKey(dataset);
+  if (recipes[exactKey]) return {key: exactKey, recipe: recipes[exactKey], score: 999};
+
+  let best = null;
+  for (const [key, recipe] of Object.entries(recipes)) {
+    const score = recipeMatchScore(dataset, recipe);
+    if (score < 0) continue;
+    if (!best || score > best.score) best = {key, recipe, score};
+  }
+  return best;
+}
+
 async function applySavedRecipes() {
   const map = await loadRecipeMap();
   let applied = 0;
-  for (const dataset of datasets) {
-    const key = recipeKey(dataset);
-    const recipe = map[key];
-    if (recipe && applyRecipeToDataset(dataset, recipe)) applied++;
+  let preferredIndex = -1;
+  let preferredScore = -1;
+
+  for (let index = 0; index < datasets.length; index++) {
+    const dataset = datasets[index];
+    const match = await findBestRecipe(dataset, map);
+    if (!match) continue;
+
+    if (applyRecipeToDataset(dataset, {...match.recipe, key: match.key})) {
+      applied++;
+      if (match.score > preferredScore) {
+        preferredScore = match.score;
+        preferredIndex = index;
+      }
+    }
   }
-  return applied;
+
+  return {count: applied, preferredIndex};
 }
 
 async function hasSavedRecipe(dataset = activeDataset()) {
-  if (!dataset) return false;
-  const map = await loadRecipeMap();
-  return Boolean(map[recipeKey(dataset)]);
+  return Boolean(await findBestRecipe(dataset));
 }
 
 async function updateRecipeUi(dataset = activeDataset()) {
@@ -481,7 +548,7 @@ async function scanCurrentPage() {
       resetColumnConfig(dataset);
     });
     const savedApplied = await applySavedRecipes();
-    currentIndex = 0;
+    currentIndex = savedApplied.preferredIndex >= 0 ? savedApplied.preferredIndex : 0;
 
     if (!datasets.length) {
       els.results.hidden = true;
@@ -490,14 +557,15 @@ async function scanCurrentPage() {
     }
 
     populateDatasetSelect();
+    els.select.value = String(currentIndex);
     applyCleanupControls(activeDataset()?.cleanupOptions || defaultCleanupOptions());
     renderFieldEditor();
     renderDataset();
     await updateRecipeUi();
     els.results.hidden = false;
     showStatus(
-      savedApplied
-        ? `Detected ${datasets.length} dataset${datasets.length === 1 ? "" : "s"}. Applied ${savedApplied} saved setting${savedApplied === 1 ? "" : "s"}.`
+      savedApplied.count
+        ? `Detected ${datasets.length} dataset${datasets.length === 1 ? "" : "s"}. Applied ${savedApplied.count} saved setting${savedApplied.count === 1 ? "" : "s"} and selected the best match.`
         : `Detected ${datasets.length} dataset${datasets.length === 1 ? "" : "s"}.`,
       "success"
     );
@@ -1005,165 +1073,120 @@ async function collectMoreFromPage(dataset, maxRounds) {
   const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
   if (!tab?.id) throw new Error("No active tab found.");
 
-  const result = await chrome.scripting.executeScript({
+  const originalPositionResult = await chrome.scripting.executeScript({
     target:{tabId:tab.id},
-    args:[dataset.source, dataset.type, Math.max(1, Math.min(Number(maxRounds)||10, 30))],
-    func:async (source, datasetType, maxRounds) => {
-      const clean = value => String(value ?? "").replace(/\s+/g," ").trim();
-      const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
-      const pricePattern = /(?:[$€£¥￥]\s*\d[\d,.]*(?:\.\d+)?|\d[\d,.]*(?:\.\d+)?\s*(?:USD|EUR|GBP|CNY|RMB|元|円))/i;
-      const rows = new Map();
+    func:() => ({
+      y: window.scrollY,
+      height: Math.max(document.body.scrollHeight, document.documentElement.scrollHeight)
+    })
+  });
+  const originalY = originalPositionResult?.[0]?.result?.y || 0;
 
-      const rowKey = row =>
-        clean(row.URL) ||
-        [clean(row.Title),clean(row.Price),clean(row.Image)].filter(Boolean).join("\u241F") ||
-        JSON.stringify(row);
+  const accumulated = new Map();
+  const addRows = rows => {
+    for (const row of rows || []) {
+      const url = normalizeCell(row.URL);
+      const title = normalizeCell(row.Title);
+      const price = normalizeCell(row.Price);
+      const image = normalizeCell(row.Image);
+      const key = url || [title,price,image].filter(Boolean).join("\u241F") || JSON.stringify(row);
+      if (key && !accumulated.has(key)) accumulated.set(key,{...row});
+    }
+  };
 
-      const addRow = row => {
-        const key=rowKey(row);
-        if(key && !rows.has(key)) rows.set(key,row);
-      };
+  addRows(dataset.originalRows || dataset.rows);
 
-      const extractRepeatedItem = item => {
-        const extractFirstText=(selectors,predicate=()=>true)=>{
-          for(const selector of selectors){
-            for(const el of item.querySelectorAll(selector)){
-              const text=clean(el.innerText||el.textContent);
-              if(text && predicate(text,el)) return text;
-            }
-          }
-          return "";
-        };
+  const matchScannedDataset = scannedDatasets => {
+    let best = null;
 
-        const allText=clean(item.innerText);
-        const priceMatch=allText.match(pricePattern);
-        const price=priceMatch ? clean(priceMatch[0]) : "";
-        const isUsefulTitle=text =>
-          text.length>=3 &&
-          text.length<=180 &&
-          !/^[¥￥$€£]?\s*\d[\d,.]*$/.test(text) &&
-          !/^(¥|￥|\$|€|£)$/.test(text);
+    for (const candidate of scannedDatasets || []) {
+      if (candidate.type !== dataset.type) continue;
 
-        let title=extractFirstText([
-          "[class*=title]","[class*=name]","[class*=desc]",
-          "h1","h2","h3","h4","a"
-        ],isUsefulTitle);
+      let score = 0;
+      const originalHeaders = new Set(dataset.headers || []);
+      const candidateHeaders = new Set(candidate.headers || []);
+      const shared = [...originalHeaders].filter(header => candidateHeaders.has(header)).length;
+      const headerRatio = originalHeaders.size ? shared / originalHeaders.size : 0;
+      score += headerRatio * 100;
 
-        if(!title){
-          const candidates=[...item.querySelectorAll("p,span,strong")]
-            .map(el=>clean(el.innerText||el.textContent))
-            .filter(isUsefulTitle)
-            .sort((a,b)=>b.length-a.length);
-          title=candidates[0]||"";
-        }
+      if (dataset.meta?.signature && candidate.meta?.signature &&
+          dataset.meta.signature === candidate.meta.signature) score += 180;
 
-        const seller=extractFirstText(
-          ["[class*=seller]","[class*=shop]","[class*=store]","[class*=merchant]"],
-          text=>text.length<=100 && text!==title
-        );
-        const sales=extractFirstText(
-          ["[class*=sales]","[class*=sold]","[class*=deal]","[class*=volume]"],
-          text=>text.length<=80 && text!==price
-        );
-        const rating=extractFirstText(
-          ["[class*=rating]","[class*=score]","[class*=star]"],
-          text=>text.length<=40
-        );
+      if (datasetKind(candidate) === datasetKind(dataset)) score += 45;
 
-        const link=item.matches("a[href]") ? item : item.querySelector("a[href]");
-        const img=item.querySelector("img");
-        const imageUrl=img?.currentSrc||img?.src||"";
-
-        const out={};
-        if(title) out.Title=title;
-        if(price) out.Price=price;
-        if(seller) out.Seller=seller;
-        if(sales) out.Sales=sales;
-        if(rating) out.Rating=rating;
-        if(link?.href) out.URL=link.href;
-        if(imageUrl) out.Image=imageUrl;
-
-        if(!Object.keys(out).length && allText) out.Title=allText.slice(0,220);
-        return out;
-      };
-
-      const matchesItem = child => {
-        if(!child || child.nodeType!==1) return false;
-        if(source?.itemTag && child.tagName.toLowerCase()!==source.itemTag) return false;
-        const classes=Array.isArray(source?.itemClasses) ? source.itemClasses : [];
-        if(classes.length && !classes.every(name=>child.classList.contains(name))) return false;
-        return true;
-      };
-
-      const collectNow=()=>{
-        if(datasetType==="table" && source?.selector){
-          const table=document.querySelector(source.selector);
-          if(!table) return 0;
-          const rowEls=[...table.querySelectorAll("tr")];
-          if(!rowEls.length) return 0;
-          const firstCells=[...rowEls[0].querySelectorAll("th,td")];
-          const hasHeaders=rowEls[0].querySelectorAll("th").length>0;
-          const headers=firstCells.map((cell,i)=>hasHeaders ? clean(cell.innerText) || `Column ${i+1}` : `Column ${i+1}`);
-          for(const tr of rowEls.slice(hasHeaders?1:0)){
-            const cells=[...tr.querySelectorAll("th,td")].map(cell=>clean(cell.innerText));
-            if(!cells.some(Boolean)) continue;
-            const out={};
-            headers.forEach((header,i)=>out[header]=cells[i]||"");
-            addRow(out);
-          }
-          return rows.size;
-        }
-
-        if(datasetType==="repeated" && source?.parentSelector){
-          const parent=document.querySelector(source.parentSelector);
-          if(!parent) return 0;
-          let children=[...parent.children].filter(matchesItem);
-          if(!children.length && Array.isArray(source.childIndexes)){
-            const all=[...parent.children];
-            children=source.childIndexes.map(i=>all[i]).filter(Boolean);
-          }
-          children.forEach(child=>addRow(extractRepeatedItem(child)));
-          return rows.size;
-        }
-        return 0;
-      };
-
-      const originalY=window.scrollY;
-      let noGrowth=0;
-      let rounds=0;
-      let previousSize=collectNow();
-      let previousHeight=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
-
-      for(let round=0;round<maxRounds;round++){
-        rounds=round+1;
-        const height=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
-        window.scrollTo({top:height,behavior:"smooth"});
-        await sleep(1250);
-
-        const size=collectNow();
-        const nextHeight=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
-
-        if(size===previousSize && nextHeight===previousHeight) noGrowth++;
-        else noGrowth=0;
-
-        previousSize=size;
-        previousHeight=nextHeight;
-        if(noGrowth>=2) break;
+      const originalClasses = new Set(dataset.source?.itemClasses || []);
+      const candidateClasses = candidate.source?.itemClasses || [];
+      if (candidateClasses.length) {
+        const overlap = candidateClasses.filter(name => originalClasses.has(name)).length;
+        score += (overlap / candidateClasses.length) * 45;
       }
 
-      collectNow();
-      window.scrollTo({top:originalY,behavior:"auto"});
+      if (candidate.rows?.length) score += Math.min(candidate.rows.length,100) * 0.2;
 
-      return {
-        rows:[...rows.values()],
-        rounds,
-        stoppedEarly:noGrowth>=2,
-        count:rows.size
-      };
+      if (!best || score > best.score) best = {candidate,score};
     }
-  });
 
-  return result?.[0]?.result || {rows:[],rounds:0,count:0,stoppedEarly:false};
+    return best && best.score >= 70 ? best.candidate : null;
+  };
+
+  let rounds=0;
+  let noGrowth=0;
+  let previousCount=accumulated.size;
+  let previousHeight=originalPositionResult?.[0]?.result?.height || 0;
+
+  try {
+    for (let round=0; round<Math.max(1,Math.min(Number(maxRounds)||10,30)); round++) {
+      rounds=round+1;
+
+      await chrome.scripting.executeScript({
+        target:{tabId:tab.id},
+        func:() => {
+          const height=Math.max(document.body.scrollHeight,document.documentElement.scrollHeight);
+          window.scrollTo({top:height,behavior:"smooth"});
+          return height;
+        }
+      });
+
+      await new Promise(resolve => setTimeout(resolve, 1400));
+
+      // Re-run the exact same extraction engine used by the normal Scan button.
+      const scanResult = await chrome.scripting.executeScript({
+        target:{tabId:tab.id},
+        func:extractPageDatasets
+      });
+      const scannedDatasets=scanResult?.[0]?.result || [];
+      const matched=matchScannedDataset(scannedDatasets);
+      if (matched) addRows(matched.rows);
+
+      const heightResult = await chrome.scripting.executeScript({
+        target:{tabId:tab.id},
+        func:() => Math.max(document.body.scrollHeight,document.documentElement.scrollHeight)
+      });
+      const nextHeight=heightResult?.[0]?.result || previousHeight;
+      const nextCount=accumulated.size;
+
+      if (nextCount===previousCount && nextHeight===previousHeight) noGrowth++;
+      else noGrowth=0;
+
+      previousCount=nextCount;
+      previousHeight=nextHeight;
+
+      if (noGrowth>=2) break;
+    }
+  } finally {
+    await chrome.scripting.executeScript({
+      target:{tabId:tab.id},
+      args:[originalY],
+      func:(y) => window.scrollTo({top:y,behavior:"auto"})
+    }).catch(()=>{});
+  }
+
+  return {
+    rows:[...accumulated.values()],
+    rounds,
+    stoppedEarly:noGrowth>=2,
+    count:accumulated.size
+  };
 }
 
 els.scan.addEventListener("click", scanCurrentPage);
@@ -1333,6 +1356,11 @@ els.saveRecipe.addEventListener("click", async () => {
     type:dataset.type,
     kind:datasetKind(dataset),
     headers:[...(dataset.headers || [])],
+    sourceHint:{
+      signature:dataset.meta?.signature || "",
+      itemTag:dataset.source?.itemTag || "",
+      itemClasses:Array.isArray(dataset.source?.itemClasses) ? [...dataset.source.itemClasses] : []
+    },
     columns:columnConfig(dataset).map(column => ({
       source:column.source,
       label:column.label,
@@ -1353,8 +1381,8 @@ els.forgetRecipe.addEventListener("click", async () => {
   const dataset=activeDataset();
   if(!dataset) return;
   const map=await loadRecipeMap();
-  const key=recipeKey(dataset);
-  delete map[key];
+  const match=await findBestRecipe(dataset,map);
+  if(match?.key) delete map[match.key];
   await saveRecipeMap(map);
   dataset.appliedRecipeKey="";
   await updateRecipeUi(dataset);
@@ -1379,7 +1407,7 @@ els.collectMore.addEventListener("click", async () => {
   try{
     const result=await collectMoreFromPage(dataset,els.scrollRounds.value);
     const before=(dataset.originalRows||dataset.rows).length;
-    dataset.originalRows=mergeCollectedRows(dataset,result.rows);
+    dataset.originalRows=result.rows.map(row => ({...row}));
     dataset.rows=cleanupDataset(dataset,dataset.cleanupOptions||currentCleanupOptions());
     const after=dataset.rows.length;
 

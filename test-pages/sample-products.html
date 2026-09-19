@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>List2Sheet Test Page</title>
+  <style>
+    body{font-family:Arial,sans-serif;padding:30px}
+    .products{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+    .card{border:1px solid #ccc;padding:14px;border-radius:10px}
+    table{margin-top:30px;border-collapse:collapse;width:100%}
+    th,td{border:1px solid #ccc;padding:8px}
+  </style>
+</head>
+<body>
+  <h1>Sample products</h1>
+  <div class="products">
+    <article class="card"><h2>Studio Keyboard</h2><p>$89</p><span>4.8 stars</span><a href="https://example.com/keyboard">View</a></article>
+    <article class="card"><h2>Desk Lamp</h2><p>$42</p><span>4.7 stars</span><a href="https://example.com/lamp">View</a></article>
+    <article class="card"><h2>USB Hub</h2><p>$29</p><span>4.9 stars</span><a href="https://example.com/hub">View</a></article>
+  </div>
+
+  <table>
+    <thead><tr><th>Name</th><th>Price</th><th>Rating</th></tr></thead>
+    <tbody>
+      <tr><td>Studio Keyboard</td><td>$89</td><td>4.8</td></tr>
+      <tr><td>Desk Lamp</td><td>$42</td><td>4.7</td></tr>
+      <tr><td>USB Hub</td><td>$29</td><td>4.9</td></tr>
+    </tbody>
+  </table>
+</body>
+</html>

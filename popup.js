@@ -45,7 +45,7 @@ function extractPageDatasets() {
   const uniqueHeaders = (headers) => {
     const seen = new Map();
     return headers.map((header, index) => {
-      let base = clean(header) || `Column ${index + 1}`;
+      const base = clean(header) || `Column ${index + 1}`;
       const count = (seen.get(base) || 0) + 1;
       seen.set(base, count);
       return count === 1 ? base : `${base} ${count}`;
@@ -80,7 +80,8 @@ function extractPageDatasets() {
         type: "table",
         label: `Table ${tableIndex + 1}`,
         headers,
-        rows: dataRows
+        rows: dataRows,
+        score: 1200 + dataRows.length * Math.min(headers.length, 8)
       });
     }
   });
@@ -89,12 +90,14 @@ function extractPageDatasets() {
     .filter(parent => parent.children.length >= 3 && parent.children.length <= 80);
 
   const seenGroups = new Set();
+  const menuWords = /(nav|menu|cate|category|sidebar|channel|tab|filter|breadcrumb|header|footer|toolbar|shortcut)/i;
+  const pricePattern = /(?:[$€£¥￥]\s?\d|\d+(?:\.\d{1,2})?\s?(?:USD|EUR|GBP|CNY|RMB|元|円))/i;
 
   for (const parent of candidateParents) {
     const groups = new Map();
 
     for (const child of [...parent.children]) {
-      const classPart = [...child.classList].slice(0, 2).sort().join(".");
+      const classPart = [...child.classList].slice(0, 3).sort().join(".");
       const signature = child.tagName.toLowerCase() + (classPart ? "." + classPart : "");
       if (!groups.has(signature)) groups.set(signature, []);
       groups.get(signature).push(child);
@@ -103,25 +106,56 @@ function extractPageDatasets() {
     for (const [signature, items] of groups) {
       if (items.length < 3) continue;
 
-      const fingerprint = signature + "|" + items.length + "|" + items.slice(0,3).map(x => clean(x.innerText).slice(0,30)).join("~");
+      const fingerprint = signature + "|" + items.length + "|" +
+        items.slice(0,3).map(x => clean(x.innerText).slice(0,30)).join("~");
       if (seenGroups.has(fingerprint)) continue;
       seenGroups.add(fingerprint);
 
+      const contextText = [
+        signature,
+        parent.id || "",
+        [...parent.classList].join(" "),
+        parent.getAttribute("role") || "",
+        parent.closest("nav,header,footer,aside")?.tagName || ""
+      ].join(" ");
+
+      const isMenuLike = menuWords.test(contextText);
+
+      let imageCount = 0;
+      let linkCount = 0;
+      let priceCount = 0;
+      let buttonCount = 0;
+
       const rows = items.map(item => {
         const fields = [];
-        const leafCandidates = [...item.querySelectorAll("h1,h2,h3,h4,h5,h6,p,span,a,li,strong,small")]
-          .filter(el => el.children.length === 0)
-          .map(el => clean(el.innerText))
-          .filter(text => text && text.length <= 300);
 
-        for (const text of leafCandidates) {
-          if (!fields.includes(text)) fields.push(text);
-          if (fields.length >= 8) break;
+        if (item.querySelector("img")) imageCount++;
+        if (item.matches("a[href]") || item.querySelector("a[href]")) linkCount++;
+        if (item.querySelector("button,[role=button]")) buttonCount++;
+        if (pricePattern.test(clean(item.innerText))) priceCount++;
+
+        const preferredSelectors = [
+          "[class*=title]","[class*=name]","[class*=price]","[class*=amount]",
+          "h1","h2","h3","h4","h5","h6","strong","p","span","a","small"
+        ];
+
+        const nodes = [];
+        for (const selector of preferredSelectors) {
+          for (const el of item.querySelectorAll(selector)) {
+            if (el.children.length === 0 || selector.startsWith("[class*=")) nodes.push(el);
+          }
+        }
+
+        for (const el of nodes) {
+          const text = clean(el.innerText || el.textContent);
+          if (!text || text.length > 220 || fields.includes(text)) continue;
+          fields.push(text);
+          if (fields.length >= 7) break;
         }
 
         if (!fields.length) {
           const text = clean(item.innerText);
-          if (text) fields.push(text);
+          if (text && text.length <= 500) fields.push(text);
         }
 
         const out = {};
@@ -129,43 +163,82 @@ function extractPageDatasets() {
 
         const link = item.matches("a[href]") ? item : item.querySelector("a[href]");
         if (link?.href) out.URL = link.href;
+
+        const img = item.querySelector("img");
+        const imageUrl = img?.currentSrc || img?.src;
+        if (imageUrl) out.Image = imageUrl;
+
         return out;
       }).filter(row => Object.values(row).some(Boolean));
 
       if (rows.length < 3) continue;
 
-      const maxFields = Math.min(8, Math.max(...rows.map(row =>
+      const maxFields = Math.min(7, Math.max(...rows.map(row =>
         Object.keys(row).filter(key => key.startsWith("Field ")).length
       )));
       const headers = Array.from({length:maxFields}, (_, i) => `Field ${i + 1}`);
       if (rows.some(row => row.URL)) headers.push("URL");
+      if (rows.some(row => row.Image)) headers.push("Image");
 
       const density = rows.reduce((sum,row) =>
         sum + headers.filter(header => clean(row[header])).length, 0
       ) / (rows.length * headers.length);
 
-      if (density < 0.35) continue;
+      if (density < 0.30) continue;
+
+      const count = rows.length;
+      const imageRatio = imageCount / items.length;
+      const linkRatio = linkCount / items.length;
+      const priceRatio = priceCount / items.length;
+      const buttonRatio = buttonCount / items.length;
+
+      let score =
+        Math.min(count, 40) * 8 +
+        Math.min(headers.length, 8) * 12 +
+        imageRatio * 420 +
+        linkRatio * 220 +
+        priceRatio * 420 +
+        buttonRatio * 60 +
+        density * 120;
+
+      if (isMenuLike) score -= 700;
+      if (imageRatio < 0.15 && priceRatio < 0.15 && count > 12) score -= 220;
+      if (headers.length >= 9 && imageRatio < 0.2) score -= 100;
+
+      let kind = "Repeated list";
+      if (imageRatio >= 0.5 && priceRatio >= 0.25) kind = "Product cards";
+      else if (imageRatio >= 0.5) kind = "Visual cards";
+      else if (priceRatio >= 0.35) kind = "Priced list";
 
       datasets.push({
         type: "repeated",
-        label: `Repeated ${signature} (${rows.length} rows)`,
+        label: `${kind} · ${count} rows`,
         headers,
         rows: rows.map(row => {
           const normalized = {};
           headers.forEach(header => normalized[header] = row[header] || "");
           return normalized;
-        })
+        }),
+        score,
+        meta: {
+          signature,
+          imageRatio,
+          linkRatio,
+          priceRatio,
+          isMenuLike
+        }
       });
     }
   }
 
-  datasets.sort((a,b) => {
-    const aScore = a.rows.length * a.headers.length + (a.type === "table" ? 500 : 0);
-    const bScore = b.rows.length * b.headers.length + (b.type === "table" ? 500 : 0);
-    return bScore - aScore;
-  });
+  datasets.sort((a,b) => (b.score || 0) - (a.score || 0));
 
-  return datasets.slice(0, 12);
+  const strong = datasets.filter(dataset =>
+    dataset.type === "table" ||
+    (dataset.score || 0) >= 250
+  );
+
+  return (strong.length ? strong : datasets).slice(0, 12);
 }
 
 async function scanCurrentPage() {

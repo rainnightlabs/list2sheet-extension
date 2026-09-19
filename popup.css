@@ -147,3 +147,10 @@ footer a{color:var(--muted);text-decoration:none}
 .recipeBar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:7px 2px 0;min-height:20px}
 .recipeBar .muted{line-height:1.35}
 .button.saved{border-color:#34715d;color:#9aebc8}
+
+.collectorCard{margin-top:10px;padding:11px;border:1px solid var(--line);border-radius:10px;background:linear-gradient(180deg,#10213a,#0d1b2e)}
+.collectorHead{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px;font-size:12px}
+.collectorHead>div{display:flex;align-items:center;gap:7px}
+.proMini{padding:2px 6px;border-radius:999px;background:#b9ddff;color:#06131f;font-size:9px;font-weight:900}
+.collectorControls{display:grid;grid-template-columns:1fr 1.35fr;gap:8px}
+.collectorControls select{min-width:0}

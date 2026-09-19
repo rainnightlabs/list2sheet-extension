@@ -154,3 +154,7 @@ footer a{color:var(--muted);text-decoration:none}
 .proMini{padding:2px 6px;border-radius:999px;background:#b9ddff;color:#06131f;font-size:9px;font-weight:900}
 .collectorControls{display:grid;grid-template-columns:1fr 1.35fr;gap:8px}
 .collectorControls select{min-width:0}
+
+.previewBar{display:flex;align-items:center;justify-content:space-between;gap:10px;margin:11px 2px -3px}
+.previewLimitLabel{display:flex;align-items:center;gap:6px;color:var(--muted);font-size:10px}
+.previewLimitLabel select{width:auto;min-width:62px;padding:5px 7px;font-size:10px}

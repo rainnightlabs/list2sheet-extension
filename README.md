@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **v0.3 productization build**
+Repository status: **v0.4 cleanup + XLSX build**
 
 ## Phase 1 features
 
@@ -20,6 +20,12 @@ Repository status: **v0.3 productization build**
   - reset configuration
 - Highlight the detected source region on the active webpage
 - In-popup data preview
+- Data cleanup:
+  - remove duplicate rows
+  - remove empty rows
+  - optionally require Title
+  - normalize price formatting
+  - optionally remove common tracking parameters from URLs
 - Free plan:
   - up to 100 rows
   - Copy TSV
@@ -28,6 +34,7 @@ Repository status: **v0.3 productization build**
   - CSV export
   - JSON export
   - Markdown export
+  - XLSX export (self-contained, no remote library)
 - Rainnight Labs license activation
 - License verification against:
   - `https://www.rainnightlabs.com/api/license-verify/`
@@ -84,7 +91,6 @@ These are planned Pro features and are **not** part of the MVP yet:
 - saved extraction recipes
 - infinite-scroll automation
 - multi-page crawling
-- XLSX export
 - Edge / Firefox packaging
 - automated tests
 

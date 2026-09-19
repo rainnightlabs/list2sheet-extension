@@ -35,6 +35,7 @@
       <div class="datasetTools">
         <button id="highlightButton" class="button small">Highlight source</button>
         <button id="toggleFieldsButton" class="button small">Edit fields</button>
+        <button id="toggleCleanupButton" class="button small">Clean data</button>
       </div>
 
       <section id="fieldEditor" class="fieldEditor" hidden>
@@ -47,6 +48,23 @@
         </div>
         <div id="fieldList"></div>
         <p class="fieldHint">Choose columns, rename them, and use ↑ / ↓ to change export order.</p>
+      </section>
+
+      <section id="cleanupEditor" class="cleanupEditor" hidden>
+        <div class="fieldEditorHead">
+          <strong>Data cleanup</strong>
+          <span id="cleanupStats" class="muted"></span>
+        </div>
+        <label class="cleanupOption"><input id="cleanDuplicates" type="checkbox" checked> Remove duplicate rows</label>
+        <label class="cleanupOption"><input id="cleanEmpty" type="checkbox" checked> Remove empty rows</label>
+        <label class="cleanupOption"><input id="cleanMissingTitle" type="checkbox"> Remove rows without Title</label>
+        <label class="cleanupOption"><input id="cleanPrice" type="checkbox" checked> Normalize price formatting</label>
+        <label class="cleanupOption"><input id="cleanTracking" type="checkbox"> Remove common URL tracking parameters</label>
+        <div class="cleanupActions">
+          <button id="applyCleanup" class="button small" type="button">Apply cleanup</button>
+          <button id="resetCleanup" class="button small" type="button">Restore original rows</button>
+        </div>
+        <p class="fieldHint">Cleanup never changes the webpage. It only changes the dataset used for preview and export.</p>
       </section>
 
       <div id="limitNotice" class="notice" hidden>
@@ -62,6 +80,7 @@
         <button id="csvButton" class="button proAction">Export CSV</button>
         <button id="jsonButton" class="button proAction">Export JSON</button>
         <button id="markdownButton" class="button proAction">Export Markdown</button>
+        <button id="xlsxButton" class="button proAction">Export XLSX</button>
       </div>
     </section>
 

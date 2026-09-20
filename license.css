@@ -66,3 +66,9 @@ button.secondary{background:#13243b;color:var(--text);border-color:#36587b}
 .help{font-size:12px;margin-top:24px}
 a{color:var(--accent)}
 code{font-family:ui-monospace,SFMono-Regular,Consolas,monospace}
+
+.licenseTop{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.languageSelect{
+  width:auto;margin:0;padding:7px 9px;border:1px solid var(--line);border-radius:999px;
+  background:#081321;color:var(--text);font:inherit;font-size:12px
+}

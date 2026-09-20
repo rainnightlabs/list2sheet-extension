@@ -126,19 +126,32 @@ function cleanRows(dataset,rows){
     next=next.filter(row=>row.__l2sAd!==true && row.__l2sAd!=="true");
   }
 
-  const keywords=String(options.keywords||"")
-    .split(/[\n,，]+/)
-    .map(value=>clean(value).toLowerCase())
-    .filter(Boolean);
+  const stages=Array.isArray(options.filterStages)&&options.filterStages.length
+    ? options.filterStages
+    : (String(options.keywords||"").trim()
+      ? [{
+          keywords:String(options.keywords||""),
+          mode:options.keywordMode==="exclude"?"exclude":"include",
+          match:options.keywordMatch==="all"?"all":"any"
+        }]
+      : []);
 
-  if(keywords.length){
+  for(const stage of stages){
+    const keywords=String(stage.keywords||"")
+      .split(/[\n,，]+/)
+      .map(value=>clean(value).toLowerCase())
+      .filter(Boolean);
+    if(!keywords.length) continue;
+
     next=next.filter(row=>{
       const haystack=(dataset.headers||Object.keys(row))
         .filter(key=>!key.startsWith("__"))
         .map(key=>clean(row[key]).toLowerCase())
         .join(" ");
-      const matched=keywords.some(keyword=>haystack.includes(keyword));
-      return options.keywordMode==="exclude" ? !matched : matched;
+      const matched=stage.match==="all"
+        ? keywords.every(keyword=>haystack.includes(keyword))
+        : keywords.some(keyword=>haystack.includes(keyword));
+      return stage.mode==="exclude" ? !matched : matched;
     });
   }
 
@@ -703,7 +716,9 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
         stripTracking:false,
         removeAds:true,
         keywords:"",
-        keywordMode:"include"
+        keywordMode:"include",
+        keywordMatch:"any",
+        filterStages:[]
       };
       dataset.columnConfig=(dataset.headers||[]).map((source,index)=>({
         source,label:source,enabled:true,order:index

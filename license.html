@@ -8,33 +8,39 @@
 </head>
 <body>
   <main class="card">
-    <div class="brand">Rainnight Labs</div>
-    <h1>Activate List2Sheet Pro</h1>
-    <p class="lead">Use the purchase email and the <code>L2S1...</code> license generated after checkout.</p>
+    <div class="licenseTop">
+      <div class="brand">Rainnight Labs</div>
+      <select id="languageSelect" class="languageSelect" aria-label="Language">
+        <option value="en">English</option>
+        <option value="zh">简体中文</option>
+      </select>
+    </div>
+    <h1 data-i18n="activateTitle">Activate List2Sheet Pro</h1>
+    <p class="lead" data-i18n="activateLead">Use the purchase email and the L2S1... license generated after checkout.</p>
 
     <form id="licenseForm">
       <label>
-        Purchase email
+        <span data-i18n="purchaseEmail">Purchase email</span>
         <input id="email" type="email" autocomplete="email" required placeholder="you@example.com">
       </label>
       <label>
-        License
+        <span data-i18n="license">License</span>
         <textarea id="license" required rows="5" spellcheck="false" placeholder="L2S1..."></textarea>
       </label>
-      <button id="activate" type="submit">Verify and activate</button>
+      <button id="activate" type="submit" data-i18n="verifyActivate">Verify and activate</button>
     </form>
 
     <div id="message" class="message" hidden></div>
 
     <section id="activeLicense" class="active" hidden>
-      <strong>Pro is active</strong>
+      <strong data-i18n="proActive">Pro is active</strong>
       <p id="activeEmail"></p>
-      <button id="deactivate" class="secondary">Deactivate on this browser</button>
+      <button id="deactivate" class="secondary" data-i18n="deactivate">Deactivate on this browser</button>
     </section>
 
     <p class="help">
-      Need a license?
-      <a href="https://www.rainnightlabs.com/pricing/" target="_blank">Open Rainnight Labs pricing</a>.
+      <span data-i18n="needLicense">Need a license?</span>
+      <a href="https://www.rainnightlabs.com/pricing/" target="_blank" data-i18n="openPricing">Open Rainnight Labs pricing</a>.
     </p>
   </main>
 

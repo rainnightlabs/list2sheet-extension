@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **v0.8.0 productization UI build**
+Repository status: **v0.9.0 onboarding + QA build**
 
 ## Phase 1 features
 
@@ -61,10 +61,15 @@ Repository status: **v0.8.0 productization UI build**
   - normalize price formatting
   - optionally remove common tracking parameters from URLs
 - Free plan:
+  - scan current page
+  - Manual Pick
+  - preview / field editing / cleanup / highlight
+  - saved settings
   - up to 100 rows
   - Copy TSV
 - Pro framework:
   - unlimited rows
+  - infinite scroll and multi-page collection
   - CSV export
   - JSON export
   - Markdown export
@@ -123,7 +128,6 @@ No broad `<all_urls>` permission is used.
 These are planned Pro features and are **not** part of the MVP yet:
 
 - Edge / Firefox packaging
-- automated tests
 
 ## Brand
 
@@ -222,3 +226,15 @@ For Ajax pagination, List2Sheet clicks the control and waits until the selected 
   - Copy TSV and XLSX are the primary export actions.
   - CSV / JSON / Markdown move under More formats.
 - The goal of v0.8 is release-quality usability rather than adding more extraction features.
+
+
+## v0.9.0 onboarding and QA
+
+- First-run onboarding explains the basic Scan/Pick → Review → Export workflow.
+- Successful first use automatically dismisses onboarding.
+- Empty scan results now show an actionable Manual Pick fallback instead of a dead-end message.
+- Common Chrome/runtime/frame errors are translated into user-facing recovery guidance.
+- Free/Pro boundary is finalized for the public beta:
+  - Free includes Scan, Manual Pick, Preview, fields, cleanup, highlight, Saved Settings, and Copy TSV up to 100 rows.
+  - Pro adds unlimited rows, file exports, infinite-scroll collection, and multi-page collection.
+- Browser fixture tests are included under `tests/` for deterministic extraction checks.

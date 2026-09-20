@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **v0.6.2 dynamic pagination build**
+Repository status: **v0.6.3 stable pagination + live sync build**
 
 ## Phase 1 features
 
@@ -176,3 +176,12 @@ Supported discovery now includes:
 - pagination controls inside the same frame as the selected dataset
 
 For Ajax pagination, List2Sheet clicks the control and waits until the selected dataset changes before extracting and continuing.
+
+
+## v0.6.3 stable pagination
+
+- Ajax pagination no longer collects immediately after the first DOM change.
+- Each page is scanned repeatedly until row count and content are stable across multiple checks.
+- The first scanned page becomes a soft expected page-size hint; a temporarily short render gets extra wait time.
+- Per-page row counts are recorded in pagination status (for example: 10 / 10 / 10 / 10 / 10).
+- The popup now re-reads background session state while pagination runs, so preview rows and headers update without requiring a manual re-scan.

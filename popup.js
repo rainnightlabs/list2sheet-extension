@@ -547,13 +547,192 @@ function markRecipeDirty() {
   els.recipeStatus.textContent = "Settings changed. Save to reuse them after the next scan.";
 }
 
+async function scanBilibiliApiDatasets(tabId) {
+  try {
+    const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+    const url=tab?.id===tabId ? (tab.url||"") : "";
+    if(!/https?:\/\/www\.bilibili\.com\/video\//i.test(url)) return [];
+
+    const result=await chrome.scripting.executeScript({
+      target:{tabId,frameIds:[0]},
+      world:"MAIN",
+      func:async()=>{
+        const pageUrl=new URL(location.href);
+        const match=pageUrl.pathname.match(/\/video\/(BV[0-9A-Za-z]{10})/i);
+        if(!match) return [];
+
+        const bvid=match[1];
+        const safeFetch=async url=>{
+          try{
+            const response=await fetch(url,{
+              credentials:"include",
+              headers:{Accept:"application/json, text/plain, */*"}
+            });
+            if(!response.ok) return null;
+            return response;
+          }catch{return null;}
+        };
+
+        const infoResponse=await safeFetch(
+          "https://api.bilibili.com/x/web-interface/view?bvid="+encodeURIComponent(bvid)
+        );
+        if(!infoResponse) return [];
+
+        let info=null;
+        try{info=await infoResponse.json();}catch{return [];}
+        const video=info?.data;
+        if(!video?.aid) return [];
+
+        const aid=video.aid;
+        const cid=video.cid || video.pages?.[0]?.cid || 0;
+        const datasets=[];
+
+        const formatDate=seconds=>{
+          if(!seconds) return "";
+          try{return new Date(Number(seconds)*1000).toLocaleString();}catch{return "";}
+        };
+
+        const commentRows=[];
+        const seenReplies=new Set();
+        const pushReply=reply=>{
+          if(!reply) return;
+          const id=String(reply.rpid_str||reply.rpid||"");
+          if(id && seenReplies.has(id)) return;
+          if(id) seenReplies.add(id);
+
+          const message=String(reply.content?.message||"").trim();
+          if(!message) return;
+
+          commentRows.push({
+            Author:String(reply.member?.uname||"").trim(),
+            Comment:message,
+            Date:formatDate(reply.ctime),
+            Likes:String(reply.like ?? ""),
+            Replies:String(reply.rcount ?? ""),
+            URL:location.href
+          });
+
+          for(const child of reply.replies||[]) pushReply(child);
+        };
+
+        let commentPayload=null;
+        const mainUrl=
+          "https://api.bilibili.com/x/v2/reply/main?type=1&oid="+
+          encodeURIComponent(aid)+"&mode=3&next=0&ps=20";
+        const mainResponse=await safeFetch(mainUrl);
+        if(mainResponse){
+          try{
+            const json=await mainResponse.json();
+            if(json?.code===0) commentPayload=json.data;
+          }catch{}
+        }
+
+        if(!commentPayload){
+          const hotUrl=
+            "https://api.bilibili.com/x/v2/reply/hot?type=1&oid="+
+            encodeURIComponent(aid)+"&pn=1&ps=20";
+          const hotResponse=await safeFetch(hotUrl);
+          if(hotResponse){
+            try{
+              const json=await hotResponse.json();
+              if(json?.code===0) commentPayload=json.data;
+            }catch{}
+          }
+        }
+
+        if(commentPayload){
+          const roots=[
+            ...(commentPayload.top_replies||[]),
+            ...(commentPayload.replies||[])
+          ];
+          roots.forEach(pushReply);
+        }
+
+        if(commentRows.length){
+          datasets.push({
+            type:"comments",
+            label:"Comments · "+commentRows.length+" rows",
+            headers:["Author","Comment","Date","Likes","Replies","URL"],
+            rows:commentRows,
+            score:4200,
+            meta:{
+              signature:"bilibili-api-comments",
+              rowCount:commentRows.length,
+              provider:"bilibili",
+              bvid,
+              aid
+            },
+            source:{
+              kind:"site-api",
+              provider:"bilibili",
+              frameId:0
+            }
+          });
+        }
+
+        if(cid){
+          const dmResponse=await safeFetch(
+            "https://api.bilibili.com/x/v1/dm/list.so?oid="+encodeURIComponent(cid)
+          );
+          if(dmResponse){
+            try{
+              const xmlText=await dmResponse.text();
+              const xml=new DOMParser().parseFromString(xmlText,"text/xml");
+              const rows=[...xml.querySelectorAll("d")].map(node=>{
+                const p=String(node.getAttribute("p")||"").split(",");
+                const seconds=Number(p[0]||0);
+                const mins=Math.floor(seconds/60);
+                const secs=Math.floor(seconds%60);
+                return {
+                  Danmaku:String(node.textContent||"").trim(),
+                  Time:String(mins).padStart(2,"0")+":"+String(secs).padStart(2,"0")
+                };
+              }).filter(row=>row.Danmaku);
+
+              if(rows.length){
+                datasets.push({
+                  type:"danmaku",
+                  label:"Danmaku · "+rows.length+" rows",
+                  headers:["Danmaku","Time"],
+                  rows,
+                  score:3300,
+                  meta:{
+                    signature:"bilibili-api-danmaku",
+                    rowCount:rows.length,
+                    provider:"bilibili",
+                    bvid,
+                    aid,
+                    cid
+                  },
+                  source:{
+                    kind:"site-api",
+                    provider:"bilibili",
+                    frameId:0
+                  }
+                });
+              }
+            }catch{}
+          }
+        }
+
+        return datasets;
+      }
+    });
+
+    return result?.[0]?.result || [];
+  } catch (error) {
+    console.warn("LIST2SHEET_BILIBILI_API_SCAN_FAILED",error);
+    return [];
+  }
+}
+
 async function scanTabFrames(tabId) {
   const results=await chrome.scripting.executeScript({
     target:{tabId,allFrames:true},
     func:extractPageDatasets
   });
 
-  const merged=[];
+  let merged=[];
   for(const frameResult of results||[]){
     const frameId=Number(frameResult.frameId)||0;
     for(const dataset of frameResult.result||[]){
@@ -563,6 +742,14 @@ async function scanTabFrames(tabId) {
       merged.push(dataset);
     }
   }
+
+  const bilibili=await scanBilibiliApiDatasets(tabId);
+  if(bilibili.length){
+    const apiTypes=new Set(bilibili.map(dataset=>dataset.type));
+    merged=merged.filter(dataset=>!apiTypes.has(dataset.type));
+    merged.push(...bilibili);
+  }
+
   merged.sort((a,b)=>(b.score||0)-(a.score||0));
   return merged;
 }
@@ -906,6 +1093,9 @@ function renderDataset() {
   els.preview.append(thead,tbody);
   renderCleanupStats(dataset);
   if (els.collectorStats) els.collectorStats.textContent = `${dataset.rows.length} collected`;
+  const isApiDataset=dataset.source?.kind==="site-api";
+  if(els.collectMore) els.collectMore.disabled=isApiDataset;
+  if(els.collectPages) els.collectPages.disabled=isApiDataset;
   updateProActions();
 }
 
@@ -1361,6 +1551,15 @@ els.resetFields.addEventListener("click", () => {
 
 async function syncHighlightButton() {
   const dataset=activeDataset();
+  if(dataset?.source?.kind==="site-api"){
+    if(els.highlight){
+      els.highlight.textContent=tt("highlightSource");
+      els.highlight.disabled=true;
+      els.highlight.classList.remove("saved");
+    }
+    return;
+  }
+  if(els.highlight) els.highlight.disabled=false;
   if(!dataset?.source || !currentTabId){
     if(els.highlight) els.highlight.textContent="Highlight source";
     return;
@@ -1394,7 +1593,7 @@ async function syncHighlightButton() {
 
 els.highlight.addEventListener("click", async () => {
   const dataset=activeDataset();
-  if(!dataset?.source) return;
+  if(!dataset?.source || dataset.source.kind==="site-api") return;
 
   try{
     const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
@@ -1628,6 +1827,10 @@ els.collectMore.addEventListener("click", async () => {
     showStatus("Scan and choose a dataset before collecting more.","error");
     return;
   }
+  if(dataset.source.kind==="site-api"){
+    showStatus("This dataset comes from a site data adapter and is already loaded directly. Generic auto-scroll is not used for it.");
+    return;
+  }
 
   const oldText=els.collectMore.textContent;
   els.collectMore.disabled=true;
@@ -1727,6 +1930,10 @@ els.collectPages.addEventListener("click", async () => {
   const dataset=activeDataset();
   if(!dataset){
     showStatus("Scan and choose a dataset before collecting pages.","error");
+    return;
+  }
+  if(dataset.source?.kind==="site-api"){
+    showStatus("This dataset comes from a site data adapter. Generic page-by-page collection is not used for it.");
     return;
   }
 

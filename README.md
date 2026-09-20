@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **v0.11.0 robust discussion extraction + bilingual UI build**
+Repository status: **v0.11.1 Bilibili adapter + comment column fix**
 
 ## Phase 1 features
 
@@ -277,3 +277,15 @@ For Ajax pagination, List2Sheet clicks the control and waits until the selected 
 - UI language can be switched between English and Simplified Chinese from the popup header.
 - The selected language is stored locally and is shared with the Pro activation page.
 - Structured export field names remain stable in English (for example Author / Comment / Date) so saved settings and downstream files do not change schema when the UI language changes.
+
+
+## v0.11.1 Bilibili adapter and comment-field separation
+
+- Bilibili video pages now have a site adapter fallback when DOM extraction does not expose comments or danmaku.
+- The adapter resolves the current BV video to aid/cid, then attempts to load:
+  - top-level/preview comments into Author / Comment / Date / Likes / Replies / URL
+  - danmaku into Danmaku / Time
+- If the preferred comment endpoint is unavailable, the adapter falls back to the public hot-comment endpoint.
+- Bilibili adapter datasets replace weaker DOM datasets of the same type to avoid duplicate Comments/Danmaku choices.
+- Site-adapter datasets intentionally disable DOM highlight and generic scroll/pagination controls.
+- Generic comment extraction now has stronger author detection and strips Author / Date / Likes / Replies metadata out of the Comment value, fixing Douyin-style combined author+content cells.

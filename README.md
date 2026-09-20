@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **v0.10.0 content filtering + comments build**
+Repository status: **v0.10.1 stacked filters + danmaku separation build**
 
 ## Phase 1 features
 
@@ -256,3 +256,13 @@ For Ajax pagination, List2Sheet clicks the control and waits until the selected 
 - Keyword/ad cleanup is preserved by Saved Settings and is applied during pagination collection.
 - First-run onboarding is visually stronger with a START HERE treatment.
 - Dynamic or virtualized comment systems may still require site-specific tuning or Manual Pick.
+
+
+## v0.10.1 stacked keyword filters and danmaku separation
+
+- Keyword filtering now supports ANY (OR) and ALL (AND) matching.
+- "Refine current filtered results" stacks a new filter stage on top of earlier stages.
+- Active filter-stage count is visible and all keyword stages can be cleared without resetting other cleanup rules.
+- Saved Settings preserves the stacked keyword filter chain.
+- Bilibili-style danmaku/bullet-comment streams are no longer labeled as normal Comments; they appear as a separate Danmaku dataset with a lower default ranking.
+- True semantic-similarity filtering is intentionally not claimed in this release. Current filters remain deterministic local text matching.

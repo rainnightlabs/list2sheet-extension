@@ -334,8 +334,56 @@ export function extractPageDatasets() {
     });
   }
 
-  // 4) Comment / discussion streams.
-  const commentContextPattern=/(comment|comments|comment-list|comment-section|discussion|replies|reply-list|评论|評論|留言|评论区|評論區|评论列表|評論列表|回复|回覆|弹幕|彈幕)/i;
+  // 4) Danmaku / bullet-comment streams are kept separate from normal comments.
+  const danmakuContextPattern=/(danmaku|danmu|bullet[-_ ]?comment|弹幕|彈幕)/i;
+  const danmakuParents=[...document.querySelectorAll("section,main,article,ul,ol,div")]
+    .filter(parent=>{
+      if(!visible(parent)||parent.children.length<2||parent.children.length>500) return false;
+      const context=[
+        parent.id||"",
+        String(parent.className||""),
+        parent.getAttribute("aria-label")||"",
+        parent.getAttribute("data-testid")||""
+      ].join(" ");
+      return danmakuContextPattern.test(context);
+    });
+
+  const danmakuSeen=new Set();
+  for(const parent of danmakuParents){
+    const items=[...parent.children].filter(visible);
+    if(items.length<2) continue;
+
+    const rows=[];
+    for(const item of items){
+      const text=clean(item.innerText||item.textContent);
+      if(!text||text.length>500) continue;
+      if(danmakuSeen.has(text)) continue;
+      danmakuSeen.add(text);
+      const row={Danmaku:text};
+      if(hasAdSignal(item)) row.__l2sAd=true;
+      rows.push(row);
+    }
+    if(rows.length<2) continue;
+
+    datasets.push({
+      type:"danmaku",
+      label:`Danmaku · ${rows.length} rows`,
+      headers:["Danmaku"],
+      rows,
+      score:1150+Math.min(rows.length,100)*8,
+      meta:{signature:"danmaku-stream",rowCount:rows.length},
+      source:{
+        kind:"repeated",
+        parentSelector:cssPath(parent),
+        childIndexes:items.map(item=>[...parent.children].indexOf(item)),
+        itemTag:items[0]?.tagName?.toLowerCase()||"",
+        itemClasses:items[0]?[...items[0].classList].slice(0,3):[]
+      }
+    });
+  }
+
+  // 5) Comment / discussion streams.
+  const commentContextPattern=/(comment|comments|comment-list|comment-section|discussion|replies|reply-list|评论|評論|留言|评论区|評論區|评论列表|評論列表|回复|回覆)/i;
   const commentParents=[...document.querySelectorAll("section,main,article,ul,ol,div")]
     .filter(parent=>{
       if(!visible(parent)||parent.children.length<2||parent.children.length>300) return false;
@@ -483,7 +531,7 @@ export function extractPageDatasets() {
     }
   }
 
-  // 5) Generic repeated cards/lists.
+  // 6) Generic repeated cards/lists.
   const candidateParents=[...document.querySelectorAll("ul,ol,main,section,article,div")]
     .filter(parent=>visible(parent) && parent.children.length>=3 && parent.children.length<=100);
 

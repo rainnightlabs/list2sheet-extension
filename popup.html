@@ -8,7 +8,7 @@
 </head>
 <body>
   <header class="topbar">
-    <div>
+    <div class="brandBlock">
       <div class="brand">List2Sheet</div>
       <div class="byline">by Rainnight Labs</div>
     </div>
@@ -17,130 +17,173 @@
 
   <main>
     <section class="hero">
-      <h1>Turn this page into structured data.</h1>
-      <p>Detect tables, lists, and repeated cards on the active page.</p>
-      <button id="scanButton" class="button primary">Scan current page</button>
-      <button id="pickButton" class="button pickButton" type="button">Pick data from page</button>
-      <p class="pickHint">Manual fallback: choose one table row or repeated card directly on the webpage.</p>
+      <h1>Extract structured data.</h1>
+      <p>Scan automatically or pick the data you want.</p>
+      <div class="startActions">
+        <button id="scanButton" class="button primary">Scan page</button>
+        <button id="pickButton" class="button secondary" type="button">Pick from page</button>
+      </div>
     </section>
 
     <section id="statusBox" class="status" hidden></section>
 
     <section id="results" hidden>
-      <div class="sectionHead">
-        <label for="datasetSelect">Detected dataset</label>
-        <span id="datasetMeta" class="muted"></span>
-      </div>
+      <section class="surface datasetSurface">
+        <div class="sectionHead compactHead">
+          <label for="datasetSelect">Dataset</label>
+          <span id="datasetMeta" class="muted"></span>
+        </div>
 
-      <select id="datasetSelect"></select>
+        <select id="datasetSelect"></select>
 
-      <div class="datasetTools">
-        <button id="highlightButton" class="button small">Highlight source</button>
-        <button id="toggleFieldsButton" class="button small">Edit fields</button>
-        <button id="toggleCleanupButton" class="button small">Clean data</button>
-        <button id="saveRecipeButton" class="button small">Save settings</button>
-      </div>
-      <div class="recipeBar">
-        <span id="recipeStatus" class="muted">Settings are not saved for this dataset.</span>
-        <button id="forgetRecipeButton" class="textButton" type="button" hidden>Forget saved</button>
-      </div>
+        <div class="quickActions">
+          <button id="highlightButton" class="button small">Highlight source</button>
+          <button id="saveRecipeButton" class="button small">Save settings</button>
+        </div>
 
-      <section id="fieldEditor" class="fieldEditor" hidden>
-        <div class="fieldEditorHead">
-          <strong>Fields</strong>
-          <div>
-            <button id="selectAllFields" class="textButton" type="button">Select all</button>
-            <button id="resetFields" class="textButton" type="button">Reset</button>
+        <div class="recipeBar">
+          <span id="recipeStatus" class="muted">Settings are not saved for this dataset.</span>
+          <button id="forgetRecipeButton" class="textButton" type="button" hidden>Forget</button>
+        </div>
+      </section>
+
+      <details class="toolGroup">
+        <summary>
+          <span>
+            <strong>Customize data</strong>
+            <small>Fields & cleanup</small>
+          </span>
+          <span class="chevron">⌄</span>
+        </summary>
+
+        <div class="toolGroupBody">
+          <div class="twoActionRow">
+            <button id="toggleFieldsButton" class="button small">Edit fields</button>
+            <button id="toggleCleanupButton" class="button small">Clean data</button>
           </div>
-        </div>
-        <div id="fieldList"></div>
-        <p class="fieldHint">Choose columns, rename them, and use ↑ / ↓ to change export order.</p>
-      </section>
 
-      <section id="cleanupEditor" class="cleanupEditor" hidden>
-        <div class="fieldEditorHead">
-          <strong>Data cleanup</strong>
-          <span id="cleanupStats" class="muted"></span>
-        </div>
-        <label class="cleanupOption"><input id="cleanDuplicates" type="checkbox" checked> Remove duplicate rows</label>
-        <label class="cleanupOption"><input id="cleanEmpty" type="checkbox" checked> Remove empty rows</label>
-        <label class="cleanupOption"><input id="cleanMissingTitle" type="checkbox"> Remove rows without Title</label>
-        <label class="cleanupOption"><input id="cleanPrice" type="checkbox" checked> Normalize price formatting</label>
-        <label class="cleanupOption"><input id="cleanTracking" type="checkbox"> Remove common URL tracking parameters</label>
-        <div class="cleanupActions">
-          <button id="applyCleanup" class="button small" type="button">Apply cleanup</button>
-          <button id="resetCleanup" class="button small" type="button">Restore original rows</button>
-        </div>
-        <p class="fieldHint">Cleanup never changes the webpage. It only changes the dataset used for preview and export.</p>
-      </section>
+          <section id="fieldEditor" class="fieldEditor" hidden>
+            <div class="fieldEditorHead">
+              <strong>Fields</strong>
+              <div>
+                <button id="selectAllFields" class="textButton" type="button">Select all</button>
+                <button id="resetFields" class="textButton" type="button">Reset</button>
+              </div>
+            </div>
+            <div id="fieldList"></div>
+            <p class="fieldHint">Choose columns, rename them, and use ↑ / ↓ to change export order.</p>
+          </section>
 
-      <section class="collectorCard">
-        <div class="collectorHead">
-          <div>
+          <section id="cleanupEditor" class="cleanupEditor" hidden>
+            <div class="fieldEditorHead">
+              <strong>Data cleanup</strong>
+              <span id="cleanupStats" class="muted"></span>
+            </div>
+            <label class="cleanupOption"><input id="cleanDuplicates" type="checkbox" checked> Remove duplicate rows</label>
+            <label class="cleanupOption"><input id="cleanEmpty" type="checkbox" checked> Remove empty rows</label>
+            <label class="cleanupOption"><input id="cleanMissingTitle" type="checkbox"> Remove rows without Title</label>
+            <label class="cleanupOption"><input id="cleanPrice" type="checkbox" checked> Normalize price formatting</label>
+            <label class="cleanupOption"><input id="cleanTracking" type="checkbox"> Remove URL tracking parameters</label>
+            <div class="cleanupActions">
+              <button id="applyCleanup" class="button small" type="button">Apply cleanup</button>
+              <button id="resetCleanup" class="button small" type="button">Restore rows</button>
+            </div>
+          </section>
+        </div>
+      </details>
+
+      <details class="toolGroup proGroup">
+        <summary>
+          <span class="summaryTitle">
             <strong>Collect more</strong>
             <span class="proMini">PRO</span>
-          </div>
-          <span id="collectorStats" class="muted"></span>
-        </div>
-        <div class="collectorControls">
-          <select id="scrollRounds">
-            <option value="5">Up to 5 scrolls</option>
-            <option value="10" selected>Up to 10 scrolls</option>
-            <option value="20">Up to 20 scrolls</option>
-          </select>
-          <button id="collectMoreButton" class="button" type="button">Auto-scroll & collect</button>
-        </div>
-        <p class="fieldHint">The page scrolls automatically, collects newly loaded rows, de-duplicates them, then returns to your original position. It stops early after two rounds with no growth.</p>
-      </section>
+            <small>Scroll or paginate</small>
+          </span>
+          <span class="chevron">⌄</span>
+        </summary>
 
-      <section class="paginationCard">
-        <div class="collectorHead">
-          <div>
-            <strong>Collect next pages</strong>
-            <span class="proMini">PRO</span>
-          </div>
-          <span id="paginationStats" class="muted"></span>
+        <div class="toolGroupBody">
+          <section class="collectorCard">
+            <div class="collectorHead">
+              <strong>Infinite scroll</strong>
+              <span id="collectorStats" class="muted"></span>
+            </div>
+            <div class="collectorControls">
+              <select id="scrollRounds">
+                <option value="5">5 scrolls</option>
+                <option value="10" selected>10 scrolls</option>
+                <option value="20">20 scrolls</option>
+              </select>
+              <button id="collectMoreButton" class="button" type="button">Auto-scroll & collect</button>
+            </div>
+          </section>
+
+          <section class="paginationCard">
+            <div class="collectorHead">
+              <strong>Next pages</strong>
+              <span id="paginationStats" class="muted"></span>
+            </div>
+            <div class="collectorControls">
+              <select id="pageCount">
+                <option value="2">2 pages</option>
+                <option value="5" selected>5 pages</option>
+                <option value="10">10 pages</option>
+              </select>
+              <button id="collectPagesButton" class="button" type="button">Collect next pages</button>
+            </div>
+            <div class="paginationFooter">
+              <span id="paginationStatus" class="fieldHint">Follows supported Next buttons and page links.</span>
+              <button id="stopPagesButton" class="textButton" type="button" hidden>Stop</button>
+            </div>
+          </section>
         </div>
-        <div class="collectorControls">
-          <select id="pageCount">
-            <option value="2">Next 2 pages</option>
-            <option value="5" selected>Next 5 pages</option>
-            <option value="10">Next 10 pages</option>
-          </select>
-          <button id="collectPagesButton" class="button" type="button">Collect next pages</button>
-        </div>
-        <div class="paginationFooter">
-          <span id="paginationStatus" class="fieldHint">Works with normal same-site Next-page links. The task keeps running even when the popup closes during navigation.</span>
-          <button id="stopPagesButton" class="textButton" type="button" hidden>Stop</button>
-        </div>
-      </section>
+      </details>
 
       <div id="limitNotice" class="notice" hidden>
         Free plan previews and copies up to 100 rows. Activate Pro for unlimited rows and file exports.
       </div>
 
-      <div class="previewBar">
-        <span id="previewMeta" class="muted"></span>
-        <label class="previewLimitLabel">
-          Preview
-          <select id="previewLimit">
-            <option value="12" selected>12</option>
-            <option value="50">50</option>
-            <option value="all">All</option>
-          </select>
-        </label>
-      </div>
-      <div class="tableWrap">
-        <table id="previewTable"></table>
-      </div>
+      <section class="surface previewSurface">
+        <div class="previewBar">
+          <div>
+            <strong>Preview</strong>
+            <span id="previewMeta" class="muted"></span>
+          </div>
+          <label class="previewLimitLabel">
+            Rows
+            <select id="previewLimit">
+              <option value="12" selected>12</option>
+              <option value="50">50</option>
+              <option value="all">All</option>
+            </select>
+          </label>
+        </div>
 
-      <div class="actions">
-        <button id="copyButton" class="button">Copy TSV</button>
-        <button id="csvButton" class="button proAction">Export CSV</button>
-        <button id="jsonButton" class="button proAction">Export JSON</button>
-        <button id="markdownButton" class="button proAction">Export Markdown</button>
-        <button id="xlsxButton" class="button proAction">Export XLSX</button>
-      </div>
+        <div class="tableWrap">
+          <table id="previewTable"></table>
+        </div>
+      </section>
+
+      <section class="surface exportSurface">
+        <div class="exportHead">
+          <strong>Export</strong>
+          <span class="muted">Uses your selected fields</span>
+        </div>
+
+        <div class="primaryExports">
+          <button id="copyButton" class="button">Copy TSV</button>
+          <button id="xlsxButton" class="button proAction exportPrimary">Export XLSX</button>
+        </div>
+
+        <details class="formatDetails">
+          <summary>More formats</summary>
+          <div class="moreExports">
+            <button id="csvButton" class="button proAction">CSV</button>
+            <button id="jsonButton" class="button proAction">JSON</button>
+            <button id="markdownButton" class="button proAction">Markdown</button>
+          </div>
+        </details>
+      </section>
     </section>
 
     <section class="licenseCard">
@@ -153,7 +196,7 @@
   </main>
 
   <footer>
-    <a href="https://www.rainnightlabs.com/products/list2sheet/" target="_blank">Product page</a>
+    <a href="https://www.rainnightlabs.com/products/list2sheet/" target="_blank">Product</a>
     <span>•</span>
     <a href="https://www.rainnightlabs.com/privacy/" target="_blank">Privacy</a>
   </footer>

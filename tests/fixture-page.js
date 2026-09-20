@@ -1,4 +1,4 @@
-import {extractPageDatasets} from "../../shared/extractor.js";
+import {extractPageDatasets} from "../shared/extractor.js";
 
 const body=document.body;
 const name=body.dataset.testCase || "unknown";

@@ -39,6 +39,7 @@ A build is release-ready only when these flows are reliable:
 - Basic cleanup.
 - Highlight source.
 - Copy up to 100 rows as TSV.
+- Saved settings / recipes.
 
 ### Pro
 
@@ -46,9 +47,8 @@ A build is release-ready only when these flows are reliable:
 - CSV / JSON / Markdown / XLSX file export.
 - Infinite-scroll collection.
 - Multi-page collection.
-- Saved settings / recipes.
 
-Before launch, revisit whether Saved Settings should remain Pro-only or be included in Free as an onboarding/retention feature.
+Decision for public beta: Saved Settings remains Free. It improves repeat usage and lets users experience List2Sheet's workflow value before upgrading; Pro is reserved for scale and file export automation.
 
 ## QA matrix
 
@@ -139,11 +139,11 @@ Before public beta:
 - Persistent highlight.
 - Start user-facing error cleanup.
 
-### v0.9
+### v0.9 — implemented
 - First-run onboarding.
 - Empty-state guidance.
 - Friendly error messages.
-- Automated extraction fixtures/tests.
+- Browser extraction fixtures/tests.
 - Final Free/Pro gating review.
 
 ### v1.0 candidate

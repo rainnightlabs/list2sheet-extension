@@ -1280,6 +1280,43 @@ function toXlsx(dataset) {
   ]);
 }
 
+function safeFilenamePart(value,maxLength=48) {
+  return normalizeCell(value)
+    .replace(/^www\./i,"")
+    .replace(/[^\p{L}\p{N}._-]+/gu,"-")
+    .replace(/^-+|-+$/g,"")
+    .replace(/-{2,}/g,"-")
+    .slice(0,maxLength) || "data";
+}
+
+function datasetFilenamePart(dataset) {
+  if(!dataset) return "data";
+  if(dataset.type==="comments") return "comments";
+  if(dataset.type==="danmaku") return "danmaku";
+  if(dataset.type==="search") return "search-results";
+  if(dataset.type==="social" && dataset.meta?.platform==="x") return "x-posts";
+  if(dataset.type==="table") return "table";
+
+  const label=String(dataset.label||"data").split("·")[0];
+  return safeFilenamePart(label,32).toLowerCase();
+}
+
+function exportFilename(dataset,extension) {
+  const now=new Date();
+  const stamp=[
+    now.getFullYear(),
+    String(now.getMonth()+1).padStart(2,"0"),
+    String(now.getDate()).padStart(2,"0")
+  ].join("-")+"_"+[
+    String(now.getHours()).padStart(2,"0"),
+    String(now.getMinutes()).padStart(2,"0")
+  ].join("-");
+
+  const host=safeFilenamePart(currentPageHost||"web",48);
+  const kind=safeFilenamePart(datasetFilenamePart(dataset),32);
+  return `list2sheet_${host}_${kind}_${stamp}.${extension}`;
+}
+
 function downloadBytes(filename, bytes, mime) {
   const blob=new Blob([bytes],{type:mime});
   const url=URL.createObjectURL(blob);
@@ -1507,20 +1544,24 @@ els.copy.addEventListener("click", async () => {
 });
 els.csv.addEventListener("click", () => {
   if (!requirePro()) return;
-  downloadText("list2sheet.csv", toCsv(activeDataset()), "text/csv;charset=utf-8");
+  const dataset=activeDataset();
+  downloadText(exportFilename(dataset,"csv"), toCsv(dataset), "text/csv;charset=utf-8");
 });
 els.json.addEventListener("click", () => {
   if (!requirePro()) return;
-  downloadText("list2sheet.json", toJson(activeDataset()), "application/json;charset=utf-8");
+  const dataset=activeDataset();
+  downloadText(exportFilename(dataset,"json"), toJson(dataset), "application/json;charset=utf-8");
 });
 els.markdown.addEventListener("click", () => {
   if (!requirePro()) return;
-  downloadText("list2sheet.md", toMarkdown(activeDataset()), "text/markdown;charset=utf-8");
+  const dataset=activeDataset();
+  downloadText(exportFilename(dataset,"md"), toMarkdown(dataset), "text/markdown;charset=utf-8");
 });
 els.xlsx.addEventListener("click", () => {
   if (!requirePro()) return;
-  const bytes=toXlsx(activeDataset());
-  downloadBytes("list2sheet.xlsx",bytes,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+  const dataset=activeDataset();
+  const bytes=toXlsx(dataset);
+  downloadBytes(exportFilename(dataset,"xlsx"),bytes,"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
 });
 
 els.toggleFields.addEventListener("click", () => {

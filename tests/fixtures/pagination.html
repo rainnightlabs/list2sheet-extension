@@ -1,0 +1,8 @@
+<!doctype html>
+<html><head><style>.pagination a{display:inline-block;padding:5px}.data td,.data th{padding:5px}</style></head>
+<body data-test-case="pagination-noise" data-expect-type="table" data-expect-min-rows="3">
+<table class="data"><thead><tr><th>Name</th><th>Status</th></tr></thead>
+<tbody><tr><td>A</td><td>Ready</td></tr><tr><td>B</td><td>Ready</td></tr><tr><td>C</td><td>Ready</td></tr></tbody></table>
+<table class="pagination"><tr><td><a href="?p=1">1</a></td><td><a href="?p=2">2</a></td><td><a href="?p=3">3</a></td><td><a href="?p=2">›</a></td></tr></table>
+<script type="module" src="../fixture-page.js"></script>
+</body></html>

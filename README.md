@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **v0.10.1 stacked filters + danmaku separation build**
+Repository status: **v0.11.0 robust discussion extraction + bilingual UI build**
 
 ## Phase 1 features
 
@@ -266,3 +266,14 @@ For Ajax pagination, List2Sheet clicks the control and waits until the selected 
 - Saved Settings preserves the stacked keyword filter chain.
 - Bilibili-style danmaku/bullet-comment streams are no longer labeled as normal Comments; they appear as a separate Danmaku dataset with a lower default ranking.
 - True semantic-similarity filtering is intentionally not claimed in this release. Current filters remain deterministic local text matching.
+
+
+## v0.11.0 robust comments/danmaku and bilingual UI
+
+- Discussion extraction now searches nested repeated-item containers instead of requiring comment items to be direct children of the first matching section.
+- Open Shadow DOM roots are inspected for discussion components.
+- Comments and danmaku are discovered broadly first, then classified using social metadata and container context.
+- Comment/reply selectors now include reply-item, root-reply, sub-reply and message/content patterns commonly used by video sites.
+- UI language can be switched between English and Simplified Chinese from the popup header.
+- The selected language is stored locally and is shared with the Pro activation page.
+- Structured export field names remain stable in English (for example Author / Comment / Date) so saved settings and downstream files do not change schema when the UI language changes.

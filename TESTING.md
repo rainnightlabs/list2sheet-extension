@@ -14,6 +14,7 @@ Current fixtures:
 - HTML table
 - repeated product cards
 - semantic search results
+- comment/discussion stream
 - real table plus pagination-noise table
 - empty/no-data page
 

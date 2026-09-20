@@ -3,6 +3,8 @@ const cases=[
   "fixtures/cards.html",
   "fixtures/search.html",
   "fixtures/comments.html",
+  "fixtures/comments-nested.html",
+  "fixtures/comments-shadow.html",
   "fixtures/danmaku.html",
   "fixtures/pagination.html",
   "fixtures/empty.html"

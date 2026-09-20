@@ -52,6 +52,9 @@ const els = {
   cleanMissingTitle: document.querySelector("#cleanMissingTitle"),
   cleanPrice: document.querySelector("#cleanPrice"),
   cleanTracking: document.querySelector("#cleanTracking"),
+  cleanAds: document.querySelector("#cleanAds"),
+  keywordFilter: document.querySelector("#keywordFilter"),
+  keywordMode: document.querySelector("#keywordMode"),
   applyCleanup: document.querySelector("#applyCleanup"),
   resetCleanup: document.querySelector("#resetCleanup"),
   xlsx: document.querySelector("#xlsxButton"),
@@ -370,7 +373,10 @@ function currentCleanupOptions() {
     removeEmpty: els.cleanEmpty.checked,
     removeMissingTitle: els.cleanMissingTitle.checked,
     normalizePrice: els.cleanPrice.checked,
-    stripTracking: els.cleanTracking.checked
+    stripTracking: els.cleanTracking.checked,
+    removeAds: els.cleanAds.checked,
+    keywords: els.keywordFilter.value.trim(),
+    keywordMode: els.keywordMode.value === "exclude" ? "exclude" : "include"
   };
 }
 
@@ -380,7 +386,10 @@ function defaultCleanupOptions() {
     removeEmpty: true,
     removeMissingTitle: false,
     normalizePrice: true,
-    stripTracking: false
+    stripTracking: false,
+    removeAds: true,
+    keywords: "",
+    keywordMode: "include"
   };
 }
 
@@ -390,6 +399,9 @@ function applyCleanupControls(options = defaultCleanupOptions()) {
   els.cleanMissingTitle.checked = options.removeMissingTitle === true;
   els.cleanPrice.checked = options.normalizePrice !== false;
   els.cleanTracking.checked = options.stripTracking === true;
+  els.cleanAds.checked = options.removeAds !== false;
+  els.keywordFilter.value = options.keywords || "";
+  els.keywordMode.value = options.keywordMode === "exclude" ? "exclude" : "include";
 }
 
 function applyRecipeToDataset(dataset, recipe) {
@@ -526,6 +538,7 @@ async function scanCurrentPage() {
       dataset.cleanupOptions = defaultCleanupOptions();
       resetColumnConfig(dataset);
       sanitizeDatasetState(dataset);
+      dataset.rows = cleanupDataset(dataset,dataset.cleanupOptions);
     });
     const savedApplied = await applySavedRecipes();
     currentIndex = savedApplied.preferredIndex >= 0 ? savedApplied.preferredIndex : 0;
@@ -713,6 +726,10 @@ function cleanupDataset(dataset, options) {
   let rows = sourceRows.map(row => {
     const out = {};
     for (const [key,value] of Object.entries(row)) {
+      if (key.startsWith("__l2s")) {
+        out[key] = value;
+        continue;
+      }
       let next = normalizeCell(value);
       if (options.normalizePrice && key === "Price") next = normalizePrice(next);
       if (options.stripTracking && key === "URL") next = stripTrackingParams(next);
@@ -721,8 +738,30 @@ function cleanupDataset(dataset, options) {
     return out;
   });
 
+  if (options.removeAds !== false) {
+    rows = rows.filter(row => row.__l2sAd !== true && row.__l2sAd !== "true");
+  }
+
+  const keywords=String(options.keywords||"")
+    .split(/[\n,，]+/)
+    .map(value=>normalizeCell(value).toLowerCase())
+    .filter(Boolean);
+
+  if (keywords.length) {
+    rows = rows.filter(row => {
+      const haystack=(dataset.headers||Object.keys(row))
+        .filter(key=>!key.startsWith("__"))
+        .map(key=>normalizeCell(row[key]).toLowerCase())
+        .join(" ");
+      const matched=keywords.some(keyword=>haystack.includes(keyword));
+      return options.keywordMode === "exclude" ? !matched : matched;
+    });
+  }
+
   if (options.removeEmpty) {
-    rows = rows.filter(row => Object.values(row).some(value => normalizeCell(value)));
+    rows = rows.filter(row => (dataset.headers||Object.keys(row))
+      .filter(key=>!key.startsWith("__"))
+      .some(key => normalizeCell(row[key])));
   }
 
   if (options.removeMissingTitle && dataset.headers.includes("Title")) {
@@ -1403,7 +1442,8 @@ els.applyCleanup.addEventListener("click", () => {
   markRecipeDirty();
   scheduleSessionSave();
   const removed=before-dataset.rows.length;
-  showStatus(removed>0 ? `Cleanup complete. Removed ${removed} row${removed===1?"":"s"}.` : "Cleanup complete. No rows were removed.","success");
+  const keywordNote=dataset.cleanupOptions.keywords ? " Keyword filter applied." : "";
+  showStatus(removed>0 ? `Cleanup complete. Removed ${removed} row${removed===1?"":"s"}.${keywordNote}` : `Cleanup complete. No rows were removed.${keywordNote}`,"success");
 });
 
 els.resetCleanup.addEventListener("click", () => {
@@ -1418,8 +1458,14 @@ els.resetCleanup.addEventListener("click", () => {
   showStatus("Original scanned rows restored.","success");
 });
 
-[els.cleanDuplicates,els.cleanEmpty,els.cleanMissingTitle,els.cleanPrice,els.cleanTracking].forEach(control => {
+[els.cleanDuplicates,els.cleanEmpty,els.cleanMissingTitle,els.cleanPrice,els.cleanTracking,els.cleanAds,els.keywordMode].forEach(control => {
   control.addEventListener("change", markRecipeDirty);
+});
+els.keywordFilter.addEventListener("input", markRecipeDirty);
+els.keywordFilter.addEventListener("keydown", event => {
+  if (event.key !== "Enter") return;
+  event.preventDefault();
+  els.applyCleanup.click();
 });
 
 els.saveRecipe.addEventListener("click", async () => {

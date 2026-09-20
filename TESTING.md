@@ -15,6 +15,8 @@ Current fixtures:
 - repeated product cards
 - semantic search results
 - comment/discussion stream
+- nested reply/comment stream
+- open Shadow DOM comment stream
 - danmaku/bullet-comment stream
 - real table plus pagination-noise table
 - empty/no-data page

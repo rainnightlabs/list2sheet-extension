@@ -110,6 +110,10 @@ function cleanRows(dataset,rows){
   let next=(rows||[]).map(row=>{
     const out={};
     for(const [key,value] of Object.entries(row)){
+      if(key.startsWith("__l2s")){
+        out[key]=value;
+        continue;
+      }
       let v=clean(value);
       if(options.normalizePrice!==false&&key==="Price") v=normalizePrice(v);
       if(options.stripTracking===true&&key==="URL") v=stripTracking(v);
@@ -118,8 +122,30 @@ function cleanRows(dataset,rows){
     return out;
   });
 
+  if(options.removeAds!==false){
+    next=next.filter(row=>row.__l2sAd!==true && row.__l2sAd!=="true");
+  }
+
+  const keywords=String(options.keywords||"")
+    .split(/[\n,，]+/)
+    .map(value=>clean(value).toLowerCase())
+    .filter(Boolean);
+
+  if(keywords.length){
+    next=next.filter(row=>{
+      const haystack=(dataset.headers||Object.keys(row))
+        .filter(key=>!key.startsWith("__"))
+        .map(key=>clean(row[key]).toLowerCase())
+        .join(" ");
+      const matched=keywords.some(keyword=>haystack.includes(keyword));
+      return options.keywordMode==="exclude" ? !matched : matched;
+    });
+  }
+
   if(options.removeEmpty!==false){
-    next=next.filter(row=>Object.values(row).some(value=>clean(value)));
+    next=next.filter(row=>(dataset.headers||Object.keys(row))
+      .filter(key=>!key.startsWith("__"))
+      .some(key=>clean(row[key])));
   }
   if(options.removeMissingTitle===true&&(dataset.headers||[]).includes("Title")){
     next=next.filter(row=>clean(row.Title));
@@ -674,7 +700,10 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
         removeEmpty:true,
         removeMissingTitle:false,
         normalizePrice:true,
-        stripTracking:false
+        stripTracking:false,
+        removeAds:true,
+        keywords:"",
+        keywordMode:"include"
       };
       dataset.columnConfig=(dataset.headers||[]).map((source,index)=>({
         source,label:source,enabled:true,order:index

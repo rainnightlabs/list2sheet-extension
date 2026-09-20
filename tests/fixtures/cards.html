@@ -1,0 +1,10 @@
+<!doctype html>
+<html><head><style>.grid{display:grid;grid-template-columns:repeat(3,1fr)}.card{padding:10px}.title{font-weight:bold}</style></head>
+<body data-test-case="cards" data-expect-type="repeated" data-expect-min-rows="3">
+<div class="grid">
+<div class="card"><a href="https://example.com/a"><span class="title">Alpha Keyboard</span></a><span class="price">$19.00</span></div>
+<div class="card"><a href="https://example.com/b"><span class="title">Beta Mouse</span></a><span class="price">$29.00</span></div>
+<div class="card"><a href="https://example.com/c"><span class="title">Gamma Display</span></a><span class="price">$99.00</span></div>
+</div>
+<script type="module" src="../fixture-page.js"></script>
+</body></html>

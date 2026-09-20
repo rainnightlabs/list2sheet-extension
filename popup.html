@@ -28,8 +28,9 @@
     <section id="onboardingCard" class="onboardingCard" hidden>
       <div class="onboardingTop">
         <div>
-          <strong>New to List2Sheet?</strong>
-          <p>Three steps are enough for most pages.</p>
+          <span class="startHereBadge">START HERE</span>
+          <strong>Turn this page into data in 3 steps</strong>
+          <p>Scan automatically. If the wrong area is found, use Pick from page.</p>
         </div>
         <button id="dismissOnboarding" class="textButton" type="button">Got it</button>
       </div>
@@ -109,6 +110,21 @@
             <label class="cleanupOption"><input id="cleanMissingTitle" type="checkbox"> Remove rows without Title</label>
             <label class="cleanupOption"><input id="cleanPrice" type="checkbox" checked> Normalize price formatting</label>
             <label class="cleanupOption"><input id="cleanTracking" type="checkbox"> Remove URL tracking parameters</label>
+            <label class="cleanupOption"><input id="cleanAds" type="checkbox" checked> Remove obvious ads / sponsored rows</label>
+
+            <div class="keywordFilter">
+              <div class="keywordFilterHead">
+                <strong>Keyword filter</strong>
+                <span class="muted">optional</span>
+              </div>
+              <input id="keywordFilter" class="keywordInput" type="text" placeholder="battery, portable, 4K">
+              <select id="keywordMode" class="keywordMode">
+                <option value="include">Keep rows matching any keyword</option>
+                <option value="exclude">Exclude rows matching any keyword</option>
+              </select>
+              <p class="fieldHint">Separate keywords with commas or new lines. Matches across all exported fields.</p>
+            </div>
+
             <div class="cleanupActions">
               <button id="applyCleanup" class="button small" type="button">Apply cleanup</button>
               <button id="resetCleanup" class="button small" type="button">Restore rows</button>

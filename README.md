@@ -1,8 +1,8 @@
 # List2Sheet
 
-**List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
+**List2Sheet** is a browser extension by **Rainnight Labs** for turning web posts, comments, products, search results, lists, and tables into clean spreadsheet data.
 
-Repository status: **v0.12.0 social-feed build**
+Repository status: **v0.13.0 release candidate build**
 
 ## Phase 1 features
 
@@ -308,3 +308,15 @@ For Ajax pagination, List2Sheet clicks the control and waits until the selected 
 - X promoted posts reuse the existing ad/sponsored-row cleanup path.
 - The X dataset participates in keyword filters, Saved Settings, highlight, and auto-scroll collection.
 - This social-feed dataset model is intended as the base for future Reddit / Threads / other feed adapters.
+
+
+## v0.13.0 release candidate
+
+- Feature development is intentionally frozen for the first public release candidate.
+- Exported files now use descriptive names containing:
+  - source host
+  - dataset type
+  - local export date/time
+- Example: `list2sheet_x.com_x-posts_2026-09-20_10-42.xlsx`.
+- Manifest description now reflects the broader supported content types rather than only tables/lists.
+- Release packaging, permissions/privacy review, store listing copy, and a manual release checklist are maintained in the repository.

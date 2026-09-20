@@ -1,5 +1,6 @@
 import {getProState} from "./shared/license-state.js";
 import {extractPageDatasets} from "./shared/extractor.js";
+import {getUiLanguage,setUiLanguage,applyI18n,t} from "./shared/i18n.js";
 
 const FREE_ROW_LIMIT = 100;
 const DEFAULT_PREVIEW_LIMIT = 12;
@@ -13,10 +14,12 @@ let currentTabId = null;
 let currentPageUrl = "";
 let sessionSaveTimer = null;
 let lastLoadedSessionSavedAt = 0;
+let uiLanguage = "en";
 const RECIPE_STORAGE_KEY = "list2sheet_recipes_v1";
 const ONBOARDING_STORAGE_KEY = "list2sheet_onboarding_seen_v1";
 
 const els = {
+  language: document.querySelector("#languageSelect"),
   scan: document.querySelector("#scanButton"),
   pick: document.querySelector("#pickButton"),
   onboarding: document.querySelector("#onboardingCard"),
@@ -87,6 +90,44 @@ function hideStatus() {
   els.status.hidden = true;
 }
 
+function tt(key,...args) {
+  return t(key,uiLanguage,...args);
+}
+
+function localizedDatasetLabel(dataset) {
+  if (!dataset) return "";
+  const rows=dataset.rows?.length || dataset.meta?.rowCount || 0;
+  const cols=dataset.headers?.length || dataset.meta?.columnCount || 0;
+
+  if(dataset.type==="comments") return `${tt("comments")} · ${rows} ${tt("rowWord")}`;
+  if(dataset.type==="danmaku") return `${tt("danmaku")} · ${rows} ${tt("rowWord")}`;
+  if(dataset.type==="search") return `${tt("searchResults")} · ${rows} ${tt("rowWord")}`;
+  if(dataset.type==="table"){
+    const kind=dataset.meta?.signature==="aria-grid" ? tt("dataGrid") : tt("table");
+    return cols ? `${kind} · ${rows} ${tt("rowWord")} × ${cols} ${tt("columnWord")}` : `${kind} · ${rows} ${tt("rowWord")}`;
+  }
+
+  const original=String(dataset.label||"");
+  let kind=tt("repeatedList");
+  if(/^Product cards/i.test(original)) kind=tt("productCards");
+  else if(/^Visual cards/i.test(original)) kind=tt("visualCards");
+  else if(/^Priced list/i.test(original)) kind=tt("pricedList");
+  return `${kind} · ${rows} ${tt("rowWord")}`;
+}
+
+async function refreshLanguageUi() {
+  applyI18n(uiLanguage);
+  if (els.language) els.language.value=uiLanguage;
+  populateDatasetSelect();
+  if (els.select && datasets.length) els.select.value=String(currentIndex);
+  if (activeDataset()) {
+    renderDataset();
+    await updateRecipeUi();
+    await syncHighlightButton();
+  }
+  await refreshPlan();
+}
+
 function setEmptyState(visible) {
   if (els.emptyState) els.emptyState.hidden = !visible;
 }
@@ -149,7 +190,7 @@ async function startPicker() {
       files:["picker.js"]
     });
     await markOnboardingSeen();
-    showStatus("Picker is active. Click one real row or card on the webpage, then reopen List2Sheet.","success");
+    showStatus(tt("pickerActive"),"success");
   } catch (error) {
     showStatus(friendlyError(error,"pick"),"error");
   }
@@ -414,8 +455,8 @@ function applyCleanupControls(options = defaultCleanupOptions()) {
   els.keywordMatch.value = (options.keywordMatch || lastStage?.match) === "all" ? "all" : "any";
   if (els.filterStageStatus) {
     els.filterStageStatus.textContent = stages.length
-      ? `${stages.length} keyword filter${stages.length===1?"":"s"} active.`
-      : "No keyword filters active.";
+      ? tt("filterCount",stages.length)
+      : tt("noFilters");
   }
 }
 
@@ -490,18 +531,18 @@ async function hasSavedRecipe(dataset = activeDataset()) {
 async function updateRecipeUi(dataset = activeDataset()) {
   if (!dataset || !els.saveRecipe) return;
   const saved = await hasSavedRecipe(dataset);
-  els.saveRecipe.textContent = saved ? "Saved ✓" : "Save settings";
+  els.saveRecipe.textContent = saved ? tt("saved") : tt("saveSettings");
   els.saveRecipe.classList.toggle("saved", saved);
   els.recipeStatus.textContent = saved
     ? `Saved for ${currentPageHost}. It will auto-apply after the next scan.`
-    : "Settings are not saved for this dataset.";
+    : tt("settingsNotSaved");
   els.forgetRecipe.hidden = !saved;
 }
 
 function markRecipeDirty() {
   const dataset = activeDataset();
   if (!dataset || !els.saveRecipe) return;
-  els.saveRecipe.textContent = "Save settings";
+  els.saveRecipe.textContent = tt("saveSettings");
   els.saveRecipe.classList.remove("saved");
   els.recipeStatus.textContent = "Settings changed. Save to reuse them after the next scan.";
 }
@@ -535,7 +576,7 @@ async function scanCurrentPage() {
   hideStatus();
   setEmptyState(false);
   els.scan.disabled = true;
-  els.scan.textContent = "Scanning…";
+  els.scan.textContent = tt("scanning");
 
   try {
     const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
@@ -562,7 +603,7 @@ async function scanCurrentPage() {
     if (!datasets.length) {
       els.results.hidden = true;
       setEmptyState(true);
-      showStatus("Nothing useful was detected automatically. Manual Pick usually works on custom layouts.");
+      showStatus(tt("noUsefulData"));
       return;
     }
 
@@ -580,7 +621,7 @@ async function scanCurrentPage() {
     showStatus(
       savedApplied.count
         ? `Detected ${datasets.length} dataset${datasets.length === 1 ? "" : "s"}. Applied ${savedApplied.count} saved setting${savedApplied.count === 1 ? "" : "s"} and selected the best match.`
-        : `Detected ${datasets.length} dataset${datasets.length === 1 ? "" : "s"}.`,
+        : tt("detected",datasets.length),
       "success"
     );
   } catch (error) {
@@ -589,7 +630,7 @@ async function scanCurrentPage() {
     showStatus(friendlyError(error,"scan"),"error");
   } finally {
     els.scan.disabled = false;
-    els.scan.textContent = "Scan current page";
+    els.scan.textContent = tt("scanPage");
   }
 }
 
@@ -598,7 +639,7 @@ function populateDatasetSelect() {
   datasets.forEach((dataset,index) => {
     const option = document.createElement("option");
     option.value = String(index);
-    option.textContent = dataset.label;
+    option.textContent = localizedDatasetLabel(dataset);
     els.select.appendChild(option);
   });
 }
@@ -1070,7 +1111,7 @@ function downloadText(filename, text, mime) {
 
 function requirePro() {
   if (isPro) return true;
-  showStatus("This is a Pro feature. Activate List2Sheet Pro to use unlimited collection and file exports.");
+  showStatus(tt("proRequired"));
   chrome.runtime.openOptionsPage();
   return false;
 }
@@ -1091,18 +1132,18 @@ async function refreshPlan() {
     els.planBadge.textContent = "PRO";
     els.planBadge.classList.add("pro");
     els.licenseTitle.textContent = "List2Sheet Pro";
-    els.licenseDescription.textContent = "Unlimited rows and file exports unlocked.";
-    els.activate.textContent = "Manage license";
-    if (els.collectMore) els.collectMore.textContent = "Auto-scroll & collect";
-    if (els.collectPages) els.collectPages.textContent = "Collect next pages";
+    els.licenseDescription.textContent = tt("proDescription");
+    els.activate.textContent = tt("manageLicense");
+    if (els.collectMore) els.collectMore.textContent = tt("autoScroll");
+    if (els.collectPages) els.collectPages.textContent = tt("collectNextPages");
   } else {
     els.planBadge.textContent = "FREE";
     els.planBadge.classList.remove("pro");
-    els.licenseTitle.textContent = "Free plan";
-    els.licenseDescription.textContent = "Scan, customize, save settings and copy up to 100 rows.";
-    els.activate.textContent = "Activate Pro";
-    if (els.collectMore) els.collectMore.textContent = "Auto-scroll & collect 🔒";
-    if (els.collectPages) els.collectPages.textContent = "Collect next pages 🔒";
+    els.licenseTitle.textContent = tt("freePlan");
+    els.licenseDescription.textContent = tt("freeDescription");
+    els.activate.textContent = tt("activatePro");
+    if (els.collectMore) els.collectMore.textContent = tt("autoScroll") + " 🔒";
+    if (els.collectPages) els.collectPages.textContent = tt("collectNextPages") + " 🔒";
   }
 
   if (activeDataset()) renderDataset();
@@ -1271,7 +1312,7 @@ els.copy.addEventListener("click", async () => {
   const dataset = activeDataset();
   if (!dataset) return;
   await navigator.clipboard.writeText(toTsv(dataset));
-  showStatus(`Copied ${rowsForPlan(dataset).length} rows as TSV.`, "success");
+  showStatus(tt("copied",rowsForPlan(dataset).length), "success");
 });
 els.csv.addEventListener("click", () => {
   if (!requirePro()) return;
@@ -1294,7 +1335,7 @@ els.xlsx.addEventListener("click", () => {
 els.toggleFields.addEventListener("click", () => {
   const willOpen = els.fieldEditor.hidden;
   els.fieldEditor.hidden = !willOpen;
-  els.toggleFields.textContent = willOpen ? "Hide fields" : "Edit fields";
+  els.toggleFields.textContent = willOpen ? tt("hideFields") : tt("editFields");
   if (willOpen) renderFieldEditor();
 });
 
@@ -1343,10 +1384,10 @@ async function syncHighlightButton() {
       }
     });
     const active=Boolean(result?.[0]?.result);
-    els.highlight.textContent=active ? "Clear highlight" : "Highlight source";
+    els.highlight.textContent=active ? tt("clearHighlight") : tt("highlightSource");
     els.highlight.classList.toggle("saved",active);
   }catch{
-    els.highlight.textContent="Highlight source";
+    els.highlight.textContent=tt("highlightSource");
     els.highlight.classList.remove("saved");
   }
 }
@@ -1441,13 +1482,13 @@ els.highlight.addEventListener("click", async () => {
     });
 
     const state=result?.[0]?.result||{active:false,count:0};
-    els.highlight.textContent=state.active ? "Clear highlight" : "Highlight source";
+    els.highlight.textContent=state.active ? tt("clearHighlight") : tt("highlightSource");
     els.highlight.classList.toggle("saved",Boolean(state.active));
 
     if(state.active){
-      showStatus(`Highlighted ${state.count} source element${state.count===1?"":"s"}. The highlight stays until you clear it or reload the page.`,"success");
+      showStatus(tt("highlighted",state.count),"success");
     }else if(state.count===0){
-      showStatus("Highlight cleared.","success");
+      showStatus(tt("highlightCleared"),"success");
     }
   }catch(error){
     showStatus(friendlyError(error,"highlight"),"error");
@@ -1457,7 +1498,7 @@ els.highlight.addEventListener("click", async () => {
 els.toggleCleanup.addEventListener("click", () => {
   const willOpen=els.cleanupEditor.hidden;
   els.cleanupEditor.hidden=!willOpen;
-  els.toggleCleanup.textContent=willOpen ? "Hide cleanup" : "Clean data";
+  els.toggleCleanup.textContent=willOpen ? tt("hideCleanup") : tt("cleanData");
   if(willOpen) renderCleanupStats();
 });
 
@@ -1491,7 +1532,7 @@ els.applyCleanup.addEventListener("click", () => {
   scheduleSessionSave();
   const removed=before-dataset.rows.length;
   const keywordNote=dataset.cleanupOptions.keywords ? " Keyword filter applied." : "";
-  showStatus(removed>0 ? `Cleanup complete. Removed ${removed} row${removed===1?"":"s"}.${keywordNote}` : `Cleanup complete. No rows were removed.${keywordNote}`,"success");
+  showStatus(removed>0 ? tt("cleanupRemoved",removed) : tt("cleanupNoRows"),"success");
 });
 
 els.resetCleanup.addEventListener("click", () => {
@@ -1528,7 +1569,7 @@ els.clearFilters.addEventListener("click", () => {
   renderDataset();
   markRecipeDirty();
   scheduleSessionSave();
-  showStatus("Keyword filters cleared. Other cleanup settings were kept.","success");
+  showStatus(tt("filtersCleared"),"success");
 });
 
 els.saveRecipe.addEventListener("click", async () => {
@@ -1621,7 +1662,7 @@ els.collectMore.addEventListener("click", async () => {
   }finally{
     els.collectMore.disabled=false;
     els.scan.disabled=false;
-    els.collectMore.textContent=isPro ? "Auto-scroll & collect" : "Auto-scroll & collect 🔒";
+    els.collectMore.textContent=isPro ? tt("autoScroll") : tt("autoScroll")+" 🔒";
   }
 });
 
@@ -1721,9 +1762,17 @@ els.stopPages.addEventListener("click", async () => {
   await refreshPaginationStatus();
 });
 
+els.language.addEventListener("change", async () => {
+  uiLanguage=await setUiLanguage(els.language.value);
+  await refreshLanguageUi();
+});
+
 els.activate.addEventListener("click", () => chrome.runtime.openOptionsPage());
 
 async function initializePopup() {
+  uiLanguage=await getUiLanguage();
+  applyI18n(uiLanguage);
+  if (els.language) els.language.value=uiLanguage;
   await refreshOnboarding();
   await refreshPlan();
   await restoreSessionState();

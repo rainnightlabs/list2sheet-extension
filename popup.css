@@ -325,3 +325,8 @@ footer a{color:var(--muted);text-decoration:none}
   border-radius:7px;background:#081321;color:var(--text);font-size:10px
 }
 .keywordMode{margin-top:7px;padding:7px 8px;font-size:10px}
+
+.keywordMode+ .keywordMode{margin-top:7px}
+.refineOption{margin-top:8px!important}
+.filterStageBar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px}
+.filterStageBar .muted{line-height:1.3}

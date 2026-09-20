@@ -301,13 +301,22 @@ function datasetFingerprint(dataset){
     .join("¶");
 }
 
-async function waitForDatasetChange(task,template,frameId,beforeFingerprint){
-  for(let attempt=0;attempt<24;attempt++){
-    await sleep(450);
+async function waitForDatasetStable(task,template,frameId,beforeFingerprint,expectedRows=0){
+  let changeSeen=false;
+  let changedAt=0;
+  let lastFingerprint="";
+  let lastCount=-1;
+  let stableHits=0;
+  let best=null;
+
+  // Up to ~18 seconds. Most pages settle in 2–4 seconds, but slow Ajax
+  // tables should not lose rows merely because the first render was partial.
+  for(let attempt=0;attempt<36;attempt++){
+    await sleep(500);
 
     const latest=await getTask(task.tabId);
     if(!latest||latest.status!=="running") return null;
-    if(latest.step!=="waiting_dynamic") return null;
+    if(!["waiting_dynamic","waiting_navigation","processing_page"].includes(latest.step)) return null;
 
     try{
       const scanned=await scanPage(task.tabId,frameId);
@@ -315,17 +324,53 @@ async function waitForDatasetChange(task,template,frameId,beforeFingerprint){
       if(!matched) continue;
 
       const fingerprint=datasetFingerprint(matched);
-      if(
+      const count=matched.rows?.length||0;
+      const changed=
         fingerprint!==beforeFingerprint ||
-        (matched.rows?.length||0)!==(template.rows?.length||0)
-      ){
-        return matched;
+        count!==(template.currentPageRowCount||template.rows?.length||0);
+
+      if(!changeSeen){
+        if(!changed) continue;
+        changeSeen=true;
+        changedAt=Date.now();
+        lastFingerprint=fingerprint;
+        lastCount=count;
+        stableHits=1;
+        best=matched;
+        continue;
+      }
+
+      if(count>=(best?.rows?.length||0)) best=matched;
+
+      if(fingerprint===lastFingerprint && count===lastCount){
+        stableHits++;
+      }else{
+        lastFingerprint=fingerprint;
+        lastCount=count;
+        stableHits=1;
+        best=matched;
+      }
+
+      const elapsed=Date.now()-changedAt;
+      const reachedExpected=expectedRows>0 && count>=expectedRows;
+
+      // Normal full page: 2 identical scans and >=1.2s after first change.
+      if(reachedExpected && stableHits>=2 && elapsed>=1200) return matched;
+
+      // Unknown/short page: require stronger stability so a 7/8/9-row
+      // intermediate render is not mistaken for a completed 10-row page.
+      if(stableHits>=4 && elapsed>=2600){
+        // If we expected more rows, give the page another ~2 seconds before
+        // accepting a stable short page (important for the real last page).
+        if(expectedRows>0 && count<expectedRows && elapsed<4800) continue;
+        return best||matched;
       }
     }catch{
-      // Navigation or a transient render can briefly make the frame unavailable.
+      // During navigation/re-render the frame or table can disappear briefly.
     }
   }
-  return null;
+
+  return best;
 }
 
 async function scanPage(tabId,frameId=0){
@@ -377,6 +422,7 @@ async function navigateToNext(task){
 
   // Normal top-frame links are still the most reliable path.
   if(next.href && frameId===0){
+    latest.beforePageFingerprint=datasetFingerprint(template);
     latest.step="waiting_navigation";
     await saveTask(latest);
     try{
@@ -394,6 +440,7 @@ async function navigateToNext(task){
   }
 
   const beforeFingerprint=datasetFingerprint(template);
+  latest.beforePageFingerprint=beforeFingerprint;
   latest.step="waiting_dynamic";
   await saveTask(latest);
 
@@ -403,7 +450,13 @@ async function navigateToNext(task){
     return;
   }
 
-  const changed=await waitForDatasetChange(latest,template,frameId,beforeFingerprint);
+  const changed=await waitForDatasetStable(
+    latest,
+    template,
+    frameId,
+    beforeFingerprint,
+    Number(latest.expectedRowsPerPage)||0
+  );
   const afterClickTask=await getTask(task.tabId);
   if(!afterClickTask||afterClickTask.status!=="running") return;
 
@@ -425,11 +478,6 @@ async function processLoadedPage(tabId,preScannedMatch=null){
   task.step="processing_page";
   await saveTask(task);
 
-  // Give client-rendered result grids a short moment after load.
-  await sleep(900);
-  task=await getTask(tabId);
-  if(!task||task.status!=="running") return;
-
   const state=await getSession(stateKey(tabId));
   if(!state||!Array.isArray(state.datasets)||!state.datasets.length){
     await completeTask(task,"error","The saved dataset session was not available.");
@@ -441,20 +489,26 @@ async function processLoadedPage(tabId,preScannedMatch=null){
 
   let matched=preScannedMatch;
   if(!matched){
-    let scanned;
     try{
-      scanned=await scanPage(tabId,template.source?.frameId||0);
+      matched=await waitForDatasetStable(
+        task,
+        template,
+        template.source?.frameId||0,
+        task.beforePageFingerprint||datasetFingerprint(template),
+        Number(task.expectedRowsPerPage)||0
+      );
     }catch(error){
-      await completeTask(task,"error","Could not scan the next page: "+error.message);
+      await completeTask(task,"error","Could not wait for the next page data: "+error.message);
       return;
     }
-    matched=matchDataset(template,scanned);
   }
   if(!matched){
     await completeTask(task,"complete","The next page loaded, but the selected dataset could not be matched.");
     return;
   }
 
+  const pageRowCount=matched.rows?.length||0;
+  template.currentPageRowCount=pageRowCount;
   template.originalRows=mergeRows(
     template.originalRows||template.rows,
     matched.rows,
@@ -474,6 +528,9 @@ async function processLoadedPage(tabId,preScannedMatch=null){
 
   task.pagesVisited+=1;
   task.rowsCollected=template.rows.length;
+  task.lastPageRows=pageRowCount;
+  task.pageRowCounts=Array.isArray(task.pageRowCounts) ? task.pageRowCounts : [];
+  task.pageRowCounts.push(pageRowCount);
   task.currentUrl=state.url;
   task.step="processing";
   await saveTask(task);
@@ -529,6 +586,9 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
         pagesTarget:pages,
         pagesVisited:0,
         rowsCollected:dataset.rows?.length||0,
+        expectedRowsPerPage:dataset.rows?.length||0,
+        pageRowCounts:[],
+        lastPageRows:0,
         startUrl:tab.url,
         currentUrl:tab.url,
         startedAt:Date.now(),
@@ -556,7 +616,6 @@ chrome.tabs.onUpdated.addListener((tabId,changeInfo)=>{
   (async()=>{
     const task=await getTask(tabId);
     if(!task||task.status!=="running"||task.step!=="waiting_navigation") return;
-    await sleep(900);
     await processLoadedPage(tabId);
   })().catch(async error=>{
     const task=await getTask(tabId);

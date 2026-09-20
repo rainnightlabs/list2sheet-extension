@@ -1,0 +1,23 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+.comment-list{max-width:700px}
+.comment-item{padding:10px;border-bottom:1px solid #ddd}
+.author{font-weight:bold}
+.comment-text{display:block;margin-top:5px}
+.meta{font-size:12px}
+</style>
+</head>
+<body data-test-case="comments" data-expect-type="comments" data-expect-min-rows="3">
+<section class="comment-section">
+  <div class="comment-list">
+    <div class="comment-item"><span class="author">Alice</span><p class="comment-text">The battery life is excellent for travel.</p><time>2026-09-18</time><span class="like-count">12 likes</span></div>
+    <div class="comment-item"><span class="author">Bob</span><p class="comment-text">I like the compact design and simple setup.</p><time>2026-09-19</time><span class="like-count">7 likes</span></div>
+    <div class="comment-item"><span class="author">Chen</span><p class="comment-text">The video quality is sharp even in low light.</p><time>2026-09-20</time><span class="like-count">21 likes</span></div>
+  </div>
+</section>
+<script type="module" src="../fixture-page.js"></script>
+</body>
+</html>

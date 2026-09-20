@@ -1,3 +1,4 @@
+import {getUiLanguage,setUiLanguage,applyI18n,t} from "./shared/i18n.js";
 import {
   getStoredLicense,
   saveLicense,
@@ -5,6 +6,8 @@ import {
   verifyLicense
 } from "./shared/license-state.js";
 
+let uiLanguage="en";
+const languageSelect=document.querySelector("#languageSelect");
 const form = document.querySelector("#licenseForm");
 const email = document.querySelector("#email");
 const license = document.querySelector("#license");
@@ -13,6 +16,14 @@ const message = document.querySelector("#message");
 const active = document.querySelector("#activeLicense");
 const activeEmail = document.querySelector("#activeEmail");
 const deactivate = document.querySelector("#deactivate");
+
+function tt(key,...args){return t(key,uiLanguage,...args);}
+
+async function applyLanguage(lang){
+  uiLanguage=lang;
+  applyI18n(uiLanguage);
+  languageSelect.value=uiLanguage;
+}
 
 function showMessage(text,type="") {
   message.hidden = false;
@@ -37,13 +48,13 @@ async function renderStored() {
 form.addEventListener("submit", async event => {
   event.preventDefault();
   activate.disabled = true;
-  activate.textContent = "Verifying…";
+  activate.textContent = tt("verifying");
   message.hidden = true;
 
   try {
     const result = await verifyLicense(email.value.trim(), license.value.trim());
     if (!result.ok) {
-      showMessage("License verification failed. Check the purchase email and license, then try again.","error");
+      showMessage(tt("verifyFailed"),"error");
       return;
     }
 
@@ -54,12 +65,12 @@ form.addEventListener("submit", async event => {
 
     activeEmail.textContent = email.value.trim().toLowerCase();
     active.hidden = false;
-    showMessage("List2Sheet Pro is active on this browser.","success");
+    showMessage(tt("activated"),"success");
   } catch (error) {
-    showMessage("Could not reach the Rainnight Labs license service. Check your connection and try again.","error");
+    showMessage(tt("serviceUnavailable"),"error");
   } finally {
     activate.disabled = false;
-    activate.textContent = "Verify and activate";
+    activate.textContent = tt("verifyActivate");
   }
 });
 
@@ -68,7 +79,15 @@ deactivate.addEventListener("click", async () => {
   email.value = "";
   license.value = "";
   active.hidden = true;
-  showMessage("License removed from this browser.");
+  showMessage(tt("licenseRemoved"));
 });
 
-renderStored();
+languageSelect.addEventListener("change",async()=>{
+  const lang=await setUiLanguage(languageSelect.value);
+  await applyLanguage(lang);
+});
+
+(async()=>{
+  await applyLanguage(await getUiLanguage());
+  await renderStored();
+})();

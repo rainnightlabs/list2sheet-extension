@@ -102,6 +102,7 @@ function localizedDatasetLabel(dataset) {
   if(dataset.type==="comments") return `${tt("comments")} · ${rows} ${tt("rowWord")}`;
   if(dataset.type==="danmaku") return `${tt("danmaku")} · ${rows} ${tt("rowWord")}`;
   if(dataset.type==="search") return `${tt("searchResults")} · ${rows} ${tt("rowWord")}`;
+  if(dataset.type==="social" && dataset.meta?.platform==="x") return `${tt("xPosts")} · ${rows} ${tt("rowWord")}`;
   if(dataset.type==="table"){
     const kind=dataset.meta?.signature==="aria-grid" ? tt("dataGrid") : tt("table");
     return cols ? `${kind} · ${rows} ${tt("rowWord")} × ${cols} ${tt("columnWord")}` : `${kind} · ${rows} ${tt("rowWord")}`;

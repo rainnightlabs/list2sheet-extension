@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **v0.11.1 Bilibili adapter + comment column fix**
+Repository status: **v0.12.0 social-feed build**
 
 ## Phase 1 features
 
@@ -289,3 +289,22 @@ For Ajax pagination, List2Sheet clicks the control and waits until the selected 
 - Bilibili adapter datasets replace weaker DOM datasets of the same type to avoid duplicate Comments/Danmaku choices.
 - Site-adapter datasets intentionally disable DOM highlight and generic scroll/pagination controls.
 - Generic comment extraction now has stronger author detection and strips Author / Date / Likes / Replies metadata out of the Comment value, fixing Douyin-style combined author+content cells.
+
+
+## v0.12.0 X / social-feed extraction
+
+- X/Twitter timelines and search/profile feeds now have a dedicated post extractor.
+- Visible posts are exported into stable fields when available:
+  - Author
+  - Handle
+  - Post
+  - Date
+  - Replies
+  - Reposts
+  - Likes
+  - Views
+  - URL
+  - Media
+- X promoted posts reuse the existing ad/sponsored-row cleanup path.
+- The X dataset participates in keyword filters, Saved Settings, highlight, and auto-scroll collection.
+- This social-feed dataset model is intended as the base for future Reddit / Threads / other feed adapters.

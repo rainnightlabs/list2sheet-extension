@@ -12,6 +12,7 @@ let currentPageHost = "";
 let currentTabId = null;
 let currentPageUrl = "";
 let sessionSaveTimer = null;
+let lastLoadedSessionSavedAt = 0;
 const RECIPE_STORAGE_KEY = "list2sheet_recipes_v1";
 
 const els = {
@@ -139,6 +140,7 @@ async function saveSessionStateNow() {
 
   try {
     await chrome.storage.session.set({[key]: payload});
+    lastLoadedSessionSavedAt = payload.savedAt;
   } catch (error) {
     console.warn("LIST2SHEET_SESSION_SAVE_FAILED", error);
   }
@@ -175,6 +177,7 @@ async function restoreSessionState() {
 
   datasets = saved.datasets.map(sanitizeDatasetState).filter(Boolean);
   if (!datasets.length) return false;
+  lastLoadedSessionSavedAt = Number(saved.savedAt)||0;
 
   currentIndex = Math.max(0,Math.min(Number(saved.currentIndex)||0,datasets.length-1));
   if (els.previewLimit) {
@@ -190,6 +193,36 @@ async function restoreSessionState() {
   await updateRecipeUi();
   els.results.hidden = false;
   showStatus(`Restored ${activeDataset()?.rows?.length || 0} collected rows from this tab.`,"success");
+  return true;
+}
+
+async function syncSessionStateFromBackground() {
+  if (!currentTabId || !chrome.storage?.session) return false;
+
+  const key=sessionStateKey(currentTabId);
+  const result=await chrome.storage.session.get(key);
+  const saved=result[key];
+
+  if(!saved || !Array.isArray(saved.datasets) || !saved.datasets.length) return false;
+  const savedAt=Number(saved.savedAt)||0;
+  if(savedAt<=lastLoadedSessionSavedAt) return false;
+
+  const nextDatasets=saved.datasets.map(sanitizeDatasetState).filter(Boolean);
+  if(!nextDatasets.length) return false;
+
+  datasets=nextDatasets;
+  currentIndex=Math.max(0,Math.min(Number(saved.currentIndex)||0,datasets.length-1));
+  currentPageUrl=saved.url||currentPageUrl;
+  currentPageHost=saved.host||currentPageHost;
+  lastLoadedSessionSavedAt=savedAt;
+
+  populateDatasetSelect();
+  els.select.value=String(currentIndex);
+  applyCleanupControls(activeDataset()?.cleanupOptions||defaultCleanupOptions());
+  renderFieldEditor();
+  renderDataset();
+  await updateRecipeUi();
+  els.results.hidden=false;
   return true;
 }
 
@@ -1342,6 +1375,7 @@ async function refreshPaginationStatus() {
   if (!currentTabId) return;
 
   try {
+    await syncSessionStateFromBackground();
     const response = await chrome.runtime.sendMessage({
       type:"LIST2SHEET_PAGINATION_STATUS",
       tabId:currentTabId
@@ -1357,9 +1391,13 @@ async function refreshPaginationStatus() {
     const total=task.rowsCollected || activeDataset()?.rows?.length || 0;
     els.paginationStats.textContent=`${total} collected`;
 
+    const pageCounts=Array.isArray(task.pageRowCounts)&&task.pageRowCounts.length
+      ? ` Page rows: ${task.pageRowCounts.join(" / ")}.`
+      : "";
+
     if(task.status==="running"){
       els.paginationStatus.textContent=
-        `Collecting page ${Math.min(task.pagesVisited+1,task.pagesTarget)} of ${task.pagesTarget} next page${task.pagesTarget===1?"":"s"}…`;
+        `Collecting page ${Math.min(task.pagesVisited+1,task.pagesTarget)} of ${task.pagesTarget} next page${task.pagesTarget===1?"":"s"}… ${total} rows collected.${pageCounts}`;
       els.stopPages.hidden=false;
       els.collectPages.disabled=true;
     }else{
@@ -1368,10 +1406,10 @@ async function refreshPaginationStatus() {
       const reason=task.reason ? ` ${task.reason}` : "";
       els.paginationStatus.textContent=
         task.status==="complete"
-          ? `Pagination complete: ${task.pagesVisited} page${task.pagesVisited===1?"":"s"} visited, ${total} rows collected.${reason}`
+          ? `Pagination complete: ${task.pagesVisited} page${task.pagesVisited===1?"":"s"} visited, ${total} rows collected.${pageCounts}${reason}`
           : task.status==="stopped"
-            ? `Pagination stopped after ${task.pagesVisited} page${task.pagesVisited===1?"":"s"}.`
-            : `Pagination ended: ${task.status}.${reason}`;
+            ? `Pagination stopped after ${task.pagesVisited} page${task.pagesVisited===1?"":"s"}. ${total} rows collected.${pageCounts}`
+            : `Pagination ended: ${task.status}. ${total} rows collected.${pageCounts}${reason}`;
     }
   } catch (error) {
     console.warn("LIST2SHEET_PAGINATION_STATUS_FAILED",error);

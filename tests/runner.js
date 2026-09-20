@@ -2,6 +2,7 @@ const cases=[
   "fixtures/table.html",
   "fixtures/cards.html",
   "fixtures/search.html",
+  "fixtures/x-posts.html",
   "fixtures/comments.html",
   "fixtures/comments-nested.html",
   "fixtures/comments-shadow.html",

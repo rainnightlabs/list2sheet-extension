@@ -14,10 +14,16 @@ let currentPageUrl = "";
 let sessionSaveTimer = null;
 let lastLoadedSessionSavedAt = 0;
 const RECIPE_STORAGE_KEY = "list2sheet_recipes_v1";
+const ONBOARDING_STORAGE_KEY = "list2sheet_onboarding_seen_v1";
 
 const els = {
   scan: document.querySelector("#scanButton"),
   pick: document.querySelector("#pickButton"),
+  onboarding: document.querySelector("#onboardingCard"),
+  dismissOnboarding: document.querySelector("#dismissOnboarding"),
+  emptyState: document.querySelector("#emptyState"),
+  emptyPick: document.querySelector("#emptyPickButton"),
+  emptyScan: document.querySelector("#emptyScanButton"),
   status: document.querySelector("#statusBox"),
   results: document.querySelector("#results"),
   select: document.querySelector("#datasetSelect"),
@@ -74,6 +80,73 @@ function hideStatus() {
   els.status.hidden = true;
 }
 
+function setEmptyState(visible) {
+  if (els.emptyState) els.emptyState.hidden = !visible;
+}
+
+async function markOnboardingSeen() {
+  if (els.onboarding) els.onboarding.hidden = true;
+  await chrome.storage.local.set({[ONBOARDING_STORAGE_KEY]: true});
+}
+
+async function refreshOnboarding() {
+  const result = await chrome.storage.local.get(ONBOARDING_STORAGE_KEY);
+  if (els.onboarding) els.onboarding.hidden = result[ONBOARDING_STORAGE_KEY] === true;
+}
+
+function friendlyError(error, context="general") {
+  const raw=String(error?.message || error || "").trim();
+  const lower=raw.toLowerCase();
+
+  if (/chrome:\/\/|edge:\/\/|about:|web store|extensions gallery/.test(lower)) {
+    return "Chrome does not allow extensions to read this page. Open a normal website and try again.";
+  }
+  if (/cannot access contents|cannot access a chrome|missing host permission|cannot be scripted/.test(lower)) {
+    return "This page is protected from extension access. Try the original website in a normal tab.";
+  }
+  if (/no active tab/.test(lower)) {
+    return "Open the webpage you want to extract, then try again.";
+  }
+  if (/no frame with id|frame.*not found/.test(lower)) {
+    return "The page changed while List2Sheet was working. Scan the page again and retry.";
+  }
+  if (/receiving end does not exist|message port closed|could not establish connection/.test(lower)) {
+    return "List2Sheet was refreshed while the page was open. Reload the webpage once, then try again.";
+  }
+  if (/permission denied|api permission denied|403/.test(lower)) {
+    return context === "license"
+      ? "Your license could not be verified right now. Check the connection and try again."
+      : "This action is not available with the current permission state. Reload the page and try again.";
+  }
+
+  const fallbacks={
+    scan:"List2Sheet could not scan this page.",
+    pick:"List2Sheet could not start manual selection.",
+    highlight:"List2Sheet could not highlight this dataset.",
+    collect:"List2Sheet could not collect more rows.",
+    pagination:"List2Sheet could not continue to the next page."
+  };
+  const fallback=fallbacks[context] || "List2Sheet could not complete this action.";
+  return raw ? fallback + " " + raw : fallback;
+}
+
+async function startPicker() {
+  setEmptyState(false);
+  try {
+    const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
+    if (!tab?.id) throw new Error("No active tab found.");
+    currentTabId = tab.id;
+    currentPageUrl = tab.url || "";
+    await chrome.scripting.executeScript({
+      target:{tabId:tab.id,allFrames:true},
+      files:["picker.js"]
+    });
+    await markOnboardingSeen();
+    showStatus("Picker is active. Click one real row or card on the webpage, then reopen List2Sheet.","success");
+  } catch (error) {
+    showStatus(friendlyError(error,"pick"),"error");
+  }
+}
 function normalizeCell(value) {
   return String(value ?? "").replace(/\s+/g, " ").trim();
 }
@@ -194,6 +267,7 @@ async function restoreSessionState() {
   await updateRecipeUi();
   await syncHighlightButton();
   els.results.hidden = false;
+  setEmptyState(false);
   showStatus(`Restored ${activeDataset()?.rows?.length || 0} collected rows from this tab.`,"success");
   return true;
 }
@@ -226,6 +300,7 @@ async function syncSessionStateFromBackground() {
   await updateRecipeUi();
   await syncHighlightButton();
   els.results.hidden=false;
+  setEmptyState(false);
   return true;
 }
 
@@ -430,6 +505,7 @@ function scriptTargetForDataset(tabId,dataset){
 
 async function scanCurrentPage() {
   hideStatus();
+  setEmptyState(false);
   els.scan.disabled = true;
   els.scan.textContent = "Scanning…";
 
@@ -456,7 +532,8 @@ async function scanCurrentPage() {
 
     if (!datasets.length) {
       els.results.hidden = true;
-      showStatus("No structured dataset detected on this page. Try a page with a table, product grid, search results, or repeated cards.");
+      setEmptyState(true);
+      showStatus("Nothing useful was detected automatically. Manual Pick usually works on custom layouts.");
       return;
     }
 
@@ -468,6 +545,8 @@ async function scanCurrentPage() {
     await updateRecipeUi();
     await syncHighlightButton();
     els.results.hidden = false;
+    setEmptyState(false);
+    await markOnboardingSeen();
     scheduleSessionSave();
     showStatus(
       savedApplied.count
@@ -477,10 +556,8 @@ async function scanCurrentPage() {
     );
   } catch (error) {
     els.results.hidden = true;
-    showStatus(
-      "List2Sheet could not scan this page. Chrome internal pages, the Web Store, PDFs, and some protected pages cannot be accessed. " + error.message,
-      "error"
-    );
+    setEmptyState(false);
+    showStatus(friendlyError(error,"scan"),"error");
   } finally {
     els.scan.disabled = false;
     els.scan.textContent = "Scan current page";
@@ -925,6 +1002,7 @@ function downloadText(filename, text, mime) {
 
 function requirePro() {
   if (isPro) return true;
+  showStatus("This is a Pro feature. Activate List2Sheet Pro to use unlimited collection and file exports.");
   chrome.runtime.openOptionsPage();
   return false;
 }
@@ -953,7 +1031,7 @@ async function refreshPlan() {
     els.planBadge.textContent = "FREE";
     els.planBadge.classList.remove("pro");
     els.licenseTitle.textContent = "Free plan";
-    els.licenseDescription.textContent = "Preview and copy up to 100 rows.";
+    els.licenseDescription.textContent = "Scan, customize, save settings and copy up to 100 rows.";
     els.activate.textContent = "Activate Pro";
     if (els.collectMore) els.collectMore.textContent = "Auto-scroll & collect 🔒";
     if (els.collectPages) els.collectPages.textContent = "Collect next pages 🔒";
@@ -1106,25 +1184,10 @@ async function collectMoreFromPage(dataset, maxRounds) {
 }
 
 els.scan.addEventListener("click", scanCurrentPage);
-els.pick.addEventListener("click", async () => {
-  try {
-    const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
-    if (!tab?.id) throw new Error("No active tab found.");
-
-    currentTabId = tab.id;
-    currentPageUrl = tab.url || "";
-
-    await chrome.scripting.executeScript({
-      target:{tabId:tab.id,allFrames:true},
-      files:["picker.js"]
-    });
-
-    showStatus("Picker is active. Click one data row/card on the webpage. Re-open List2Sheet after your click to see the selected dataset.","success");
-  } catch (error) {
-    showStatus("Could not start picker: " + error.message,"error");
-  }
-});
-
+els.pick.addEventListener("click", startPicker);
+els.emptyPick.addEventListener("click", startPicker);
+els.emptyScan.addEventListener("click", scanCurrentPage);
+els.dismissOnboarding.addEventListener("click", markOnboardingSeen);
 
 els.select.addEventListener("change", () => {
   currentIndex = Number(els.select.value) || 0;
@@ -1319,7 +1382,7 @@ els.highlight.addEventListener("click", async () => {
       showStatus("Highlight cleared.","success");
     }
   }catch(error){
-    showStatus("Could not highlight this dataset: "+error.message,"error");
+    showStatus(friendlyError(error,"highlight"),"error");
   }
 });
 
@@ -1445,7 +1508,7 @@ els.collectMore.addEventListener("click", async () => {
       added ? "success" : ""
     );
   }catch(error){
-    showStatus("Could not collect more rows: "+error.message,"error");
+    showStatus(friendlyError(error,"collect"),"error");
   }finally{
     els.collectMore.disabled=false;
     els.scan.disabled=false;
@@ -1536,7 +1599,7 @@ els.collectPages.addEventListener("click", async () => {
     await refreshPaginationStatus();
   }catch(error){
     els.collectPages.disabled=false;
-    showStatus("Could not start pagination: "+error.message,"error");
+    showStatus(friendlyError(error,"pagination"),"error");
   }
 });
 
@@ -1552,6 +1615,7 @@ els.stopPages.addEventListener("click", async () => {
 els.activate.addEventListener("click", () => chrome.runtime.openOptionsPage());
 
 async function initializePopup() {
+  await refreshOnboarding();
   await refreshPlan();
   await restoreSessionState();
   await syncHighlightButton();

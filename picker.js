@@ -15,6 +15,37 @@
     return style.display!=="none"&&style.visibility!=="hidden"&&rect.width>0&&rect.height>0;
   };
 
+  const cssPath=element=>{
+    if(!element||element.nodeType!==1) return "";
+    if(element.id) return "#"+CSS.escape(element.id);
+
+    const parts=[];
+    let node=element;
+    while(node&&node.nodeType===1&&node!==document.documentElement){
+      let part=node.tagName.toLowerCase();
+      const classes=[...node.classList]
+        .filter(name=>name&&name.length<50)
+        .slice(0,3);
+      if(classes.length) part+=classes.map(name=>"."+CSS.escape(name)).join("");
+
+      const parent=node.parentElement;
+      if(parent){
+        const same=[...parent.children].filter(child=>child.tagName===node.tagName);
+        if(same.length>1) part+=`:nth-of-type(${same.indexOf(node)+1})`;
+      }
+
+      parts.unshift(part);
+      const candidate=parts.join(" > ");
+      try{
+        if(document.querySelectorAll(candidate).length===1) return candidate;
+      }catch{}
+
+      node=parent;
+      if(parts.length>=8) break;
+    }
+    return parts.join(" > ");
+  };
+
   const similarSignature=el=>{
     if(!el) return "";
     const classes=[...el.classList].filter(Boolean).slice(0,2).sort();
@@ -89,8 +120,12 @@
       headers,
       rows:dataRows,
       score:3000,
-      meta:{signature:"manual-pick",manual:true},
-      source:{kind:"manual-table"}
+      meta:{signature:"manual-table",manual:true},
+      source:{
+        kind:"table",
+        selector:cssPath(table),
+        manual:true
+      }
     };
   };
 
@@ -99,6 +134,10 @@
     if(rows.length<2) return null;
     const order=["Title","Price","URL","Image","Extra 1","Extra 2","Extra 3"];
     const headers=order.filter(header=>rows.some(row=>clean(row[header])));
+    const first=group.items[0];
+    const itemClasses=first ? [...first.classList].slice(0,3) : [];
+    const signature=similarSignature(first)||"manual-repeated";
+
     return {
       type:"repeated",
       label:"Picked items · "+rows.length+" rows",
@@ -109,8 +148,15 @@
         return normalized;
       }),
       score:3000,
-      meta:{signature:"manual-pick",manual:true},
-      source:{kind:"manual-repeated"}
+      meta:{signature,manual:true},
+      source:{
+        kind:"repeated",
+        parentSelector:cssPath(group.parent),
+        childIndexes:group.items.map(item=>[...group.parent.children].indexOf(item)),
+        itemTag:first?.tagName?.toLowerCase()||"",
+        itemClasses,
+        manual:true
+      }
     };
   };
 
@@ -178,8 +224,8 @@
         headers:["Title"],
         rows:[{Title:text||target.tagName}],
         score:3000,
-        meta:{signature:"manual-pick",manual:true},
-        source:{kind:"manual-element"}
+        meta:{signature:"manual-element",manual:true},
+        source:{kind:"manual-element",selector:cssPath(target),manual:true}
       };
     }
 

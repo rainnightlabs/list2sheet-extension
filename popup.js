@@ -17,6 +17,7 @@ const RECIPE_STORAGE_KEY = "list2sheet_recipes_v1";
 
 const els = {
   scan: document.querySelector("#scanButton"),
+  pick: document.querySelector("#pickButton"),
   status: document.querySelector("#statusBox"),
   results: document.querySelector("#results"),
   select: document.querySelector("#datasetSelect"),
@@ -1102,6 +1103,26 @@ async function collectMoreFromPage(dataset, maxRounds) {
 }
 
 els.scan.addEventListener("click", scanCurrentPage);
+els.pick.addEventListener("click", async () => {
+  try {
+    const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
+    if (!tab?.id) throw new Error("No active tab found.");
+
+    currentTabId = tab.id;
+    currentPageUrl = tab.url || "";
+
+    await chrome.scripting.executeScript({
+      target:{tabId:tab.id,allFrames:true},
+      files:["picker.js"]
+    });
+
+    showStatus("Picker is active. Click one data row/card on the webpage. Re-open List2Sheet after your click to see the selected dataset.","success");
+  } catch (error) {
+    showStatus("Could not start picker: " + error.message,"error");
+  }
+});
+
+
 els.select.addEventListener("change", () => {
   currentIndex = Number(els.select.value) || 0;
   applyCleanupControls(activeDataset()?.cleanupOptions || defaultCleanupOptions());

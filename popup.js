@@ -192,6 +192,7 @@ async function restoreSessionState() {
   renderFieldEditor();
   renderDataset();
   await updateRecipeUi();
+  await syncHighlightButton();
   els.results.hidden = false;
   showStatus(`Restored ${activeDataset()?.rows?.length || 0} collected rows from this tab.`,"success");
   return true;
@@ -223,6 +224,7 @@ async function syncSessionStateFromBackground() {
   renderFieldEditor();
   renderDataset();
   await updateRecipeUi();
+  await syncHighlightButton();
   els.results.hidden=false;
   return true;
 }
@@ -464,6 +466,7 @@ async function scanCurrentPage() {
     renderFieldEditor();
     renderDataset();
     await updateRecipeUi();
+    await syncHighlightButton();
     els.results.hidden = false;
     scheduleSessionSave();
     showStatus(
@@ -1130,6 +1133,7 @@ els.select.addEventListener("change", () => {
   renderDataset();
   renderCleanupStats();
   updateRecipeUi();
+  syncHighlightButton();
   scheduleSessionSave();
 });
 els.copy.addEventListener("click", async () => {
@@ -1183,71 +1187,139 @@ els.resetFields.addEventListener("click", () => {
   scheduleSessionSave();
 });
 
+async function syncHighlightButton() {
+  const dataset=activeDataset();
+  if(!dataset?.source || !currentTabId){
+    if(els.highlight) els.highlight.textContent="Highlight source";
+    return;
+  }
+
+  try{
+    const source=dataset.source;
+    const sourceKey=[
+      source.kind||"",
+      source.selector||"",
+      source.parentSelector||"",
+      Array.isArray(source.selectors)?source.selectors.join("|"):""
+    ].join("::");
+
+    const result=await chrome.scripting.executeScript({
+      target:scriptTargetForDataset(currentTabId,dataset),
+      args:[sourceKey],
+      func:(sourceKey)=>{
+        const marked=[...document.querySelectorAll('[data-list2sheet-highlight="1"]')];
+        return marked.some(element=>element.dataset.list2sheetHighlightKey===sourceKey);
+      }
+    });
+    const active=Boolean(result?.[0]?.result);
+    els.highlight.textContent=active ? "Clear highlight" : "Highlight source";
+    els.highlight.classList.toggle("saved",active);
+  }catch{
+    els.highlight.textContent="Highlight source";
+    els.highlight.classList.remove("saved");
+  }
+}
+
 els.highlight.addEventListener("click", async () => {
-  const dataset = activeDataset();
-  if (!dataset?.source) return;
+  const dataset=activeDataset();
+  if(!dataset?.source) return;
 
-  try {
-    const [tab] = await chrome.tabs.query({active:true,currentWindow:true});
-    if (!tab?.id) throw new Error("No active tab found.");
+  try{
+    const [tab]=await chrome.tabs.query({active:true,currentWindow:true});
+    if(!tab?.id) throw new Error("No active tab found.");
 
-    const result = await chrome.scripting.executeScript({
+    const source=dataset.source;
+    const sourceKey=[
+      source.kind||"",
+      source.selector||"",
+      source.parentSelector||"",
+      Array.isArray(source.selectors)?source.selectors.join("|"):""
+    ].join("::");
+
+    const result=await chrome.scripting.executeScript({
       target:scriptTargetForDataset(tab.id,dataset),
-      args:[dataset.source],
-      func:(source) => {
-        const targets = [];
-        if (source?.kind === "table" && source.selector) {
-          const element = document.querySelector(source.selector);
-          if (element) targets.push(element);
-        } else if (source?.kind === "repeated" && source.parentSelector) {
-          const parent = document.querySelector(source.parentSelector);
-          if (parent) {
-            const children = [...parent.children];
-            for (const index of source.childIndexes || []) {
-              if (children[index]) targets.push(children[index]);
-            }
+      args:[source,sourceKey],
+      func:(source,sourceKey)=>{
+        const restoreMarked=()=>{
+          const marked=[...document.querySelectorAll('[data-list2sheet-highlight="1"]')];
+          for(const element of marked){
+            element.style.outline=element.dataset.list2sheetPrevOutline||"";
+            element.style.outlineOffset=element.dataset.list2sheetPrevOutlineOffset||"";
+            element.style.boxShadow=element.dataset.list2sheetPrevBoxShadow||"";
+            delete element.dataset.list2sheetHighlight;
+            delete element.dataset.list2sheetHighlightKey;
+            delete element.dataset.list2sheetPrevOutline;
+            delete element.dataset.list2sheetPrevOutlineOffset;
+            delete element.dataset.list2sheetPrevBoxShadow;
           }
-        } else if (source?.kind === "search" && Array.isArray(source.selectors)) {
-          for (const selector of source.selectors) {
-            try {
+          return marked;
+        };
+
+        const existing=[...document.querySelectorAll('[data-list2sheet-highlight="1"]')];
+        const sameActive=existing.some(element=>element.dataset.list2sheetHighlightKey===sourceKey);
+
+        restoreMarked();
+        if(sameActive) return {active:false,count:0};
+
+        const targets=[];
+        if(source?.kind==="table"&&source.selector){
+          try{
+            const element=document.querySelector(source.selector);
+            if(element) targets.push(element);
+          }catch{}
+        }else if(source?.kind==="repeated"&&source.parentSelector){
+          try{
+            const parent=document.querySelector(source.parentSelector);
+            if(parent){
+              const children=[...parent.children];
+              for(const index of source.childIndexes||[]){
+                if(children[index]) targets.push(children[index]);
+              }
+            }
+          }catch{}
+        }else if(source?.kind==="search"&&Array.isArray(source.selectors)){
+          for(const selector of source.selectors){
+            try{
               const element=document.querySelector(selector);
               if(element) targets.push(element);
-            } catch {}
+            }catch{}
           }
+        }else if(source?.kind==="manual-element"&&source.selector){
+          try{
+            const element=document.querySelector(source.selector);
+            if(element) targets.push(element);
+          }catch{}
         }
 
-        if (!targets.length) return 0;
+        if(!targets.length) return {active:false,count:0};
 
-        const originals = targets.map(element => ({
-          element,
-          outline: element.style.outline,
-          outlineOffset: element.style.outlineOffset,
-          background: element.style.backgroundColor
-        }));
-
-        targets.forEach(element => {
-          element.style.outline = "3px solid #57d39b";
-          element.style.outlineOffset = "2px";
-        });
+        for(const element of targets){
+          element.dataset.list2sheetHighlight="1";
+          element.dataset.list2sheetHighlightKey=sourceKey;
+          element.dataset.list2sheetPrevOutline=element.style.outline||"";
+          element.dataset.list2sheetPrevOutlineOffset=element.style.outlineOffset||"";
+          element.dataset.list2sheetPrevBoxShadow=element.style.boxShadow||"";
+          element.style.outline="3px solid #57d39b";
+          element.style.outlineOffset="2px";
+          element.style.boxShadow="0 0 0 2px rgba(87,211,155,.18)";
+        }
 
         targets[0].scrollIntoView({behavior:"smooth",block:"center",inline:"nearest"});
-
-        setTimeout(() => {
-          originals.forEach(({element,outline,outlineOffset,background}) => {
-            element.style.outline = outline;
-            element.style.outlineOffset = outlineOffset;
-            element.style.backgroundColor = background;
-          });
-        }, 2600);
-
-        return targets.length;
+        return {active:true,count:targets.length};
       }
     });
 
-    const count = result?.[0]?.result || 0;
-    showStatus(count ? `Highlighted ${count} source element${count === 1 ? "" : "s"} on the page.` : "Could not locate the source elements. Re-scan the page and try again.", count ? "success" : "");
-  } catch (error) {
-    showStatus("Could not highlight this dataset: " + error.message, "error");
+    const state=result?.[0]?.result||{active:false,count:0};
+    els.highlight.textContent=state.active ? "Clear highlight" : "Highlight source";
+    els.highlight.classList.toggle("saved",Boolean(state.active));
+
+    if(state.active){
+      showStatus(`Highlighted ${state.count} source element${state.count===1?"":"s"}. The highlight stays until you clear it or reload the page.`,"success");
+    }else if(state.count===0){
+      showStatus("Highlight cleared.","success");
+    }
+  }catch(error){
+    showStatus("Could not highlight this dataset: "+error.message,"error");
   }
 });
 
@@ -1482,6 +1554,7 @@ els.activate.addEventListener("click", () => chrome.runtime.openOptionsPage());
 async function initializePopup() {
   await refreshPlan();
   await restoreSessionState();
+  await syncHighlightButton();
   await refreshPaginationStatus();
   paginationPollTimer=setInterval(refreshPaginationStatus,800);
 }

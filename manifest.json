@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "List2Sheet",
-  "version": "0.12.0",
-  "description": "Turn web tables, lists, and repeated cards into clean structured data.",
+  "version": "0.13.0",
+  "description": "Turn web posts, comments, products, lists, search results, and tables into clean spreadsheet data.",
   "action": {
     "default_title": "List2Sheet",
     "default_popup": "popup.html"

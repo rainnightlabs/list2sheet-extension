@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **v0.7 manual picker + frame recovery build**
+Repository status: **v0.7.1 manual picker integration build**
 
 ## Phase 1 features
 
@@ -198,3 +198,11 @@ For Ajax pagination, List2Sheet clicks the control and waits until the selected 
 - "Pick data from page" provides a manual fallback when automatic detection is imperfect.
 - The picker stores the selected dataset in the same tab session, so reopening the popup immediately shows the picked data.
 - Press Escape while picking to cancel.
+
+
+## v0.7.1 manual picker integration
+
+- Picked HTML tables now retain a real table selector.
+- Picked repeated cards retain parent selector, item tag, item classes, and child indexes.
+- Picked datasets therefore use the same source format as automatically detected datasets, enabling highlight and improving compatibility with auto-scroll, pagination matching, and saved field settings.
+- Repeated manual picks replace the previous manual-picked dataset in the same tab instead of accumulating stale manual datasets.

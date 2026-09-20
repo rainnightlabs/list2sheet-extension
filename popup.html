@@ -119,10 +119,19 @@
               </div>
               <input id="keywordFilter" class="keywordInput" type="text" placeholder="battery, portable, 4K">
               <select id="keywordMode" class="keywordMode">
-                <option value="include">Keep rows matching any keyword</option>
-                <option value="exclude">Exclude rows matching any keyword</option>
+                <option value="include">Keep matching rows</option>
+                <option value="exclude">Exclude matching rows</option>
               </select>
-              <p class="fieldHint">Separate keywords with commas or new lines. Matches across all exported fields.</p>
+              <select id="keywordMatch" class="keywordMode">
+                <option value="any">Match ANY keyword (OR)</option>
+                <option value="all">Match ALL keywords (AND)</option>
+              </select>
+              <label class="cleanupOption refineOption"><input id="refineFilter" type="checkbox"> Refine current filtered results</label>
+              <div class="filterStageBar">
+                <span id="filterStageStatus" class="muted">No keyword filters active.</span>
+                <button id="clearFilters" class="textButton" type="button">Clear filters</button>
+              </div>
+              <p class="fieldHint">Separate keywords with commas or new lines. Refine lets you stack filters one after another.</p>
             </div>
 
             <div class="cleanupActions">

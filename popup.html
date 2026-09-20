@@ -25,7 +25,32 @@
       </div>
     </section>
 
+    <section id="onboardingCard" class="onboardingCard" hidden>
+      <div class="onboardingTop">
+        <div>
+          <strong>New to List2Sheet?</strong>
+          <p>Three steps are enough for most pages.</p>
+        </div>
+        <button id="dismissOnboarding" class="textButton" type="button">Got it</button>
+      </div>
+      <div class="onboardingSteps">
+        <span><b>1</b> Scan or Pick</span>
+        <span><b>2</b> Review data</span>
+        <span><b>3</b> Copy or export</span>
+      </div>
+    </section>
+
     <section id="statusBox" class="status" hidden></section>
+
+    <section id="emptyState" class="emptyState" hidden>
+      <div class="emptyIcon">⌖</div>
+      <strong>No structured data found</strong>
+      <p>Try selecting one real row or card directly on the page. List2Sheet will infer the surrounding group.</p>
+      <div class="emptyActions">
+        <button id="emptyPickButton" class="button primary" type="button">Pick data from page</button>
+        <button id="emptyScanButton" class="button" type="button">Scan again</button>
+      </div>
+    </section>
 
     <section id="results" hidden>
       <section class="surface datasetSurface">

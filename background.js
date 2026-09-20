@@ -685,7 +685,7 @@ chrome.runtime.onMessage.addListener((message,sender,sendResponse)=>{
 
       const existing=await getSession(stateKey(tabId));
       const preserved=(existing&&existing.url===tab.url&&Array.isArray(existing.datasets))
-        ? existing.datasets.filter(item=>item?.meta?.signature!=="manual-pick")
+        ? existing.datasets.filter(item=>item?.meta?.manual!==true)
         : [];
 
       await setSession(stateKey(tabId),{

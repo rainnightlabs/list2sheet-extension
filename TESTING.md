@@ -14,6 +14,7 @@ Current fixtures:
 - HTML table
 - repeated product cards
 - semantic search results
+- X/Twitter post feed
 - comment/discussion stream
 - nested reply/comment stream
 - open Shadow DOM comment stream

@@ -88,8 +88,11 @@ Then:
 
 ## 7. Store listing
 
-- [ ] Production icon set.
-- [ ] Store screenshots.
+- [ ] Production icon set includes a 128×128 PNG; also provide 16×16 and 48×48 extension icons in the package.
+- [ ] Manifest references the production icons.
+- [ ] At least one Chrome Web Store screenshot is prepared; target 1280×800.
+- [ ] Prefer 3–5 screenshots showing real workflows.
+- [ ] 440×280 small promotional tile is prepared.
 - [ ] English short description.
 - [ ] English long description.
 - [ ] Simplified Chinese listing copy if publishing localized listing text.

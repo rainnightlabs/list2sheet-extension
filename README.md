@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **v0.9.0 onboarding + QA build**
+Repository status: **v0.10.0 content filtering + comments build**
 
 ## Phase 1 features
 
@@ -14,6 +14,7 @@ Repository status: **v0.9.0 onboarding + QA build**
   - ARIA / div-based data grids
   - repeated sibling/card structures
   - same-origin iframe datasets
+  - comment / discussion streams with Author / Comment / Date / Likes / Replies / URL when available
 - Dataset chooser
 - Semantic product fields (Title / Price / Seller / Sales / Rating / URL / Image)
 - Field editor:
@@ -60,6 +61,8 @@ Repository status: **v0.9.0 onboarding + QA build**
   - optionally require Title
   - normalize price formatting
   - optionally remove common tracking parameters from URLs
+  - remove obvious ads / sponsored rows
+  - keep or exclude rows by comma/newline-separated keywords across all exported fields
 - Free plan:
   - scan current page
   - Manual Pick
@@ -238,3 +241,18 @@ For Ajax pagination, List2Sheet clicks the control and waits until the selected 
   - Free includes Scan, Manual Pick, Preview, fields, cleanup, highlight, Saved Settings, and Copy TSV up to 100 rows.
   - Pro adds unlimited rows, file exports, infinite-scroll collection, and multi-page collection.
 - Browser fixture tests are included under `tests/` for deterministic extraction checks.
+
+
+## v0.10.0 comments, keyword filtering and ad cleanup
+
+- Dedicated comment/discussion-stream detection for video and content pages.
+- Comment datasets prioritize Author / Comment / Date / Likes / Replies / URL fields when those elements are present.
+- Obvious sponsored/ad rows receive an internal marker and are removed by default without exporting the marker.
+- Keyword filtering supports:
+  - Keep rows matching any keyword.
+  - Exclude rows matching any keyword.
+  - Comma or newline separated terms.
+  - Matching across all exported fields.
+- Keyword/ad cleanup is preserved by Saved Settings and is applied during pagination collection.
+- First-run onboarding is visually stronger with a START HERE treatment.
+- Dynamic or virtualized comment systems may still require site-specific tuning or Manual Pick.

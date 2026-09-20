@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **v0.7.1 manual picker integration build**
+Repository status: **v0.8.0 productization UI build**
 
 ## Phase 1 features
 
@@ -206,3 +206,19 @@ For Ajax pagination, List2Sheet clicks the control and waits until the selected 
 - Picked repeated cards retain parent selector, item tag, item classes, and child indexes.
 - Picked datasets therefore use the same source format as automatically detected datasets, enabling highlight and improving compatibility with auto-scroll, pagination matching, and saved field settings.
 - Repeated manual picks replace the previous manual-picked dataset in the same tab instead of accumulating stale manual datasets.
+
+
+## v0.8.0 productization UI
+
+- Source highlighting is now persistent instead of disappearing after 2.6 seconds.
+- Highlight is a real toggle: Highlight source / Clear highlight.
+- Existing highlights are restored cleanly before another dataset is highlighted.
+- Popup information architecture is simplified:
+  - Scan / Pick are the only primary start actions.
+  - Dataset / Highlight / Save remain immediately available.
+  - Field editing and cleanup live under Customize data.
+  - Infinite scroll and pagination live under a collapsed Collect more (PRO) group.
+  - Preview remains visible.
+  - Copy TSV and XLSX are the primary export actions.
+  - CSV / JSON / Markdown move under More formats.
+- The goal of v0.8 is release-quality usability rather than adding more extraction features.

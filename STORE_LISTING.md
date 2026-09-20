@@ -65,3 +65,16 @@ The extension interface supports English and Simplified Chinese.
 - content/SEO researchers
 - analysts and operations teams
 - anyone repeatedly copying webpage lists into Excel
+
+
+## Current Chrome Web Store asset requirements
+
+Before submission, prepare:
+
+- 128×128 PNG store/extension icon.
+- At least one screenshot; use 1280×800 where practical (640×400 is also accepted).
+- Prefer 3–5 screenshots covering real workflows.
+- 440×280 small promotional tile.
+- 1400×560 marquee promotional image is optional but useful for future merchandising.
+
+The submitted ZIP must contain the extension files with `manifest.json` at the archive root.

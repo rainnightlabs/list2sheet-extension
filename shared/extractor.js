@@ -514,12 +514,35 @@ export function extractPageDatasets() {
         continue;
       }
 
+      const stripCommentMeta=(text,author,date,likes,replies)=>{
+        let value=clean(text);
+        for(const token of [author,date,likes,replies].filter(Boolean)){
+          if(!token) continue;
+          if(value===token) return "";
+          value=clean(value.replace(token," "));
+        }
+        value=value
+          .replace(/^[:：·•\-—\s]+/,"")
+          .replace(/[:：·•\-—\s]+$/,"")
+          .trim();
+        return value;
+      };
+
       const rows=items.map(item=>{
-        const author=extractFirst(item,[
+        let author=extractFirst(item,[
           '[class*="author"]','[class*="username"]','[class*="user-name"]',
           '[class*="nickname"]','[class*="user"]','[class*="member"]',
-          '[class*="name"]','[data-testid*="author"]','[data-testid*="user"]'
-        ],text=>text.length<=120);
+          '[class*="name"]','[data-testid*="author"]','[data-testid*="user"]',
+          '[data-e2e*="user"]','a[href*="/user/"]','a[href*="/profile/"]'
+        ],text=>text.length<=120 && !/^(回复|回覆|reply|点赞|讚|like)$/i.test(text));
+
+        if(!author){
+          const userLinks=[...item.querySelectorAll('a[href]')]
+            .filter(link=>/\/user\/|\/profile\/|space\.bilibili\.com/i.test(link.href||""))
+            .map(link=>clean(link.innerText||link.textContent))
+            .filter(text=>text.length>=1&&text.length<=80);
+          author=userLinks[0]||"";
+        }
 
         const date=extractFirst(item,[
           "time",'[class*="date"]','[class*="time"]','[class*="publish"]',
@@ -553,8 +576,10 @@ export function extractPageDatasets() {
           try{nodes=[...item.querySelectorAll(selector)];}catch{}
           for(const node of nodes){
             if(node.closest("button")) continue;
-            const text=clean(node.innerText||node.textContent);
+            let text=clean(node.innerText||node.textContent);
             if(!text||text.length<2||text.length>3000||excluded.has(text)) continue;
+            text=stripCommentMeta(text,author,date,likes,replies);
+            if(text.length<2) continue;
             candidates.push(text);
           }
         }
@@ -563,8 +588,10 @@ export function extractPageDatasets() {
           const leafNodes=[...item.querySelectorAll("span,div")]
             .filter(node=>node.children.length<=1 && !node.closest("button"));
           for(const node of leafNodes){
-            const text=clean(node.innerText||node.textContent);
+            let text=clean(node.innerText||node.textContent);
             if(!text||text.length<3||text.length>1600||excluded.has(text)) continue;
+            text=stripCommentMeta(text,author,date,likes,replies);
+            if(text.length<2) continue;
             candidates.push(text);
           }
         }
@@ -572,12 +599,14 @@ export function extractPageDatasets() {
         let comment=[...new Set(candidates)]
           .filter(text=>text!==author && text!==date && text!==likes && text!==replies)
           .sort((a,b)=>b.length-a.length)[0]||"";
+        comment=stripCommentMeta(comment,author,date,likes,replies);
 
         if(!comment){
           let all=clean(item.innerText||item.textContent);
           for(const excludedText of excluded){
             if(excludedText) all=clean(all.replace(excludedText," "));
           }
+          all=stripCommentMeta(all,author,date,likes,replies);
           if(all.length>=3&&all.length<=2000) comment=all;
         }
 

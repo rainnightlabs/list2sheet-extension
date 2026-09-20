@@ -8,6 +8,88 @@ export function extractPageDatasets() {
       Number(style.opacity || 1) !== 0 && rect.width > 0 && rect.height > 0;
   };
 
+  const queryRoots=(()=>{
+    const roots=[document];
+    const visit=root=>{
+      let elements=[];
+      try{elements=[...root.querySelectorAll("*")];}catch{}
+      for(const element of elements){
+        if(element.shadowRoot && element.shadowRoot.mode==="open" && !roots.includes(element.shadowRoot)){
+          roots.push(element.shadowRoot);
+          visit(element.shadowRoot);
+        }
+      }
+    };
+    visit(document);
+    return roots;
+  })();
+
+  const queryDeepAll=selector=>{
+    const out=[];
+    const seen=new Set();
+    for(const root of queryRoots){
+      let matches=[];
+      try{matches=[...root.querySelectorAll(selector)];}catch{}
+      for(const element of matches){
+        if(seen.has(element)) continue;
+        seen.add(element);
+        out.push(element);
+      }
+    }
+    return out;
+  };
+
+  const elementContext=element=>{
+    const parts=[];
+    let node=element;
+    for(let depth=0;node&&depth<5;depth++){
+      if(node.nodeType===1){
+        parts.push(
+          node.tagName||"",
+          node.id||"",
+          String(node.className||""),
+          node.getAttribute?.("aria-label")||"",
+          node.getAttribute?.("data-testid")||"",
+          node.getAttribute?.("part")||""
+        );
+      }
+      node=node.parentElement || node.getRootNode?.()?.host || null;
+    }
+    return parts.join(" ");
+  };
+
+  const repeatedGroupsWithin=root=>{
+    const containers=[root];
+    let descendants=[];
+    try{descendants=[...root.querySelectorAll("div,ul,ol,section,article")].slice(0,600);}catch{}
+    containers.push(...descendants);
+
+    const groups=[];
+    const seen=new Set();
+    for(const container of containers){
+      if(!visible(container)) continue;
+      const children=[...container.children].filter(visible);
+      if(children.length<2 || children.length>300) continue;
+
+      const bySignature=new Map();
+      for(const child of children){
+        const classPart=[...child.classList].slice(0,3).sort().join(".");
+        const signature=child.tagName.toLowerCase()+(classPart?"."+classPart:"");
+        if(!bySignature.has(signature)) bySignature.set(signature,[]);
+        bySignature.get(signature).push(child);
+      }
+
+      for(const [signature,items] of bySignature){
+        if(items.length<2) continue;
+        const key=signature+"|"+items.length+"|"+items.slice(0,2).map(item=>clean(item.innerText).slice(0,60)).join("~");
+        if(seen.has(key)) continue;
+        seen.add(key);
+        groups.push({container,signature,items});
+      }
+    }
+    return groups;
+  };
+
   const adLabelPattern=/^(ad|ads|advertisement|sponsored|promoted|paid promotion|promoted content|广告|廣告|推广|推廣|赞助|贊助|商业推广|商業推廣)$/i;
   const hasAdSignal=element=>{
     if(!element||element.nodeType!==1) return false;
@@ -334,129 +416,134 @@ export function extractPageDatasets() {
     });
   }
 
-  // 4) Danmaku / bullet-comment streams are kept separate from normal comments.
-  const danmakuContextPattern=/(danmaku|danmu|bullet[-_ ]?comment|弹幕|彈幕)/i;
-  const danmakuParents=[...document.querySelectorAll("section,main,article,ul,ol,div")]
-    .filter(parent=>{
-      if(!visible(parent)||parent.children.length<2||parent.children.length>500) return false;
-      const context=[
-        parent.id||"",
-        String(parent.className||""),
-        parent.getAttribute("aria-label")||"",
-        parent.getAttribute("data-testid")||""
-      ].join(" ");
-      return danmakuContextPattern.test(context);
-    });
+  // 4) Discussion streams: discover broadly, classify as Comments or Danmaku after extraction.
+  const discussionContextPattern=/(comment|comments|comment-list|comment-section|discussion|reply|replies|reply-list|reply-item|root-reply|sub-reply|评论|評論|留言|评论区|評論區|评论列表|評論列表|回复|回覆|danmaku|danmu|bullet[-_ ]?comment|弹幕|彈幕)/i;
+  const danmakuContextPattern=/(danmaku|danmu|bullet[-_ ]?comment|弹幕|彈幕|(^|[-_ ])dm([-_ ]|$))/i;
+  const commentContextPattern=/(comment|comments|discussion|reply|replies|root-reply|sub-reply|评论|評論|留言|回复|回覆)/i;
 
-  const danmakuSeen=new Set();
-  for(const parent of danmakuParents){
-    const items=[...parent.children].filter(visible);
-    if(items.length<2) continue;
+  const discussionRoots=queryDeepAll("section,main,article,ul,ol,div")
+    .filter(element=>visible(element) && discussionContextPattern.test(elementContext(element)));
 
-    const rows=[];
-    for(const item of items){
-      const text=clean(item.innerText||item.textContent);
-      if(!text||text.length>500) continue;
-      if(danmakuSeen.has(text)) continue;
-      danmakuSeen.add(text);
-      const row={Danmaku:text};
-      if(hasAdSignal(item)) row.__l2sAd=true;
-      rows.push(row);
-    }
-    if(rows.length<2) continue;
+  const discussionSeen=new Set();
 
-    datasets.push({
-      type:"danmaku",
-      label:`Danmaku · ${rows.length} rows`,
-      headers:["Danmaku"],
-      rows,
-      score:1150+Math.min(rows.length,100)*8,
-      meta:{signature:"danmaku-stream",rowCount:rows.length},
-      source:{
-        kind:"repeated",
-        parentSelector:cssPath(parent),
-        childIndexes:items.map(item=>[...parent.children].indexOf(item)),
-        itemTag:items[0]?.tagName?.toLowerCase()||"",
-        itemClasses:items[0]?[...items[0].classList].slice(0,3):[]
+  const extractFirst=(item,selectors,predicate=()=>true)=>{
+    for(const selector of selectors){
+      let nodes=[];
+      try{nodes=[...item.querySelectorAll(selector)];}catch{}
+      for(const node of nodes){
+        const text=clean(node.innerText||node.textContent||node.getAttribute?.("aria-label"));
+        if(text&&predicate(text,node)) return text;
       }
-    });
-  }
+    }
+    return "";
+  };
 
-  // 5) Comment / discussion streams.
-  const commentContextPattern=/(comment|comments|comment-list|comment-section|discussion|replies|reply-list|评论|評論|留言|评论区|評論區|评论列表|評論列表|回复|回覆)/i;
-  const commentParents=[...document.querySelectorAll("section,main,article,ul,ol,div")]
-    .filter(parent=>{
-      if(!visible(parent)||parent.children.length<2||parent.children.length>300) return false;
-      const context=[
-        parent.id||"",
-        String(parent.className||""),
-        parent.getAttribute("aria-label")||"",
-        parent.getAttribute("data-testid")||""
-      ].join(" ");
-      return commentContextPattern.test(context);
-    });
+  const classifyDiscussionGroup=(container,items)=>{
+    const context=elementContext(container)+" "+items.slice(0,3).map(elementContext).join(" ");
+    const danmakuSignal=danmakuContextPattern.test(context);
+    const commentSignal=commentContextPattern.test(context);
 
-  const commentFingerprints=new Set();
+    let authorHits=0;
+    let avatarHits=0;
+    let timeHits=0;
+    let actionHits=0;
 
-  for(const parent of commentParents){
-    const groups=new Map();
-    for(const child of [...parent.children].filter(visible)){
-      const classPart=[...child.classList].slice(0,3).sort().join(".");
-      const signature=child.tagName.toLowerCase()+(classPart?"."+classPart:"");
-      if(!groups.has(signature)) groups.set(signature,[]);
-      groups.get(signature).push(child);
+    for(const item of items.slice(0,12)){
+      if(item.querySelector('[class*="author"],[class*="user"],[class*="name"],[class*="nickname"],[data-testid*="author"],[data-testid*="user"]')) authorHits++;
+      if(item.querySelector('img[class*="avatar"],[class*="avatar"] img,[class*="face"] img')) avatarHits++;
+      if(item.querySelector('time,[class*="time"],[class*="date"],[class*="publish"]')) timeHits++;
+      if(item.querySelector('button,[class*="like"],[class*="reply"],[class*="vote"]')) actionHits++;
     }
 
-    for(const [signature,items] of groups){
-      if(items.length<2) continue;
+    const socialScore=authorHits*3+avatarHits*2+timeHits+actionHits;
+    if(commentSignal && socialScore>=2) return "comments";
+    if(danmakuSignal && socialScore<4) return "danmaku";
+    if(socialScore>=5) return "comments";
+    if(danmakuSignal) return "danmaku";
+    return commentSignal ? "comments" : "";
+  };
 
-      const fingerprint=signature+"|"+items.length+"|"+
-        items.slice(0,3).map(item=>clean(item.innerText).slice(0,45)).join("~");
-      if(commentFingerprints.has(fingerprint)) continue;
-      commentFingerprints.add(fingerprint);
+  for(const root of discussionRoots){
+    for(const {container,signature,items} of repeatedGroupsWithin(root)){
+      const type=classifyDiscussionGroup(container,items);
+      if(!type) continue;
 
-      const extractFirst=(item,selectors,predicate=()=>true)=>{
-        for(const selector of selectors){
-          let nodes=[];
-          try{nodes=[...item.querySelectorAll(selector)];}catch{}
-          for(const node of nodes){
-            const text=clean(node.innerText||node.textContent||node.getAttribute?.("aria-label"));
-            if(text&&predicate(text,node)) return text;
+      const fingerprint=type+"|"+signature+"|"+items.length+"|"+
+        items.slice(0,3).map(item=>clean(item.innerText).slice(0,50)).join("~");
+      if(discussionSeen.has(fingerprint)) continue;
+      discussionSeen.add(fingerprint);
+
+      if(type==="danmaku"){
+        const rows=[];
+        const seenTexts=new Set();
+        for(const item of items){
+          let text=extractFirst(item,[
+            '[class*="danmaku"]','[class*="danmu"]','[class*="bullet"]',
+            '[class*="dm-item"]','[data-testid*="danmaku"]'
+          ],value=>value.length<=600);
+
+          if(!text){
+            const all=clean(item.innerText||item.textContent);
+            if(all.length>=1&&all.length<=500) text=all;
           }
+
+          if(!text||seenTexts.has(text)) continue;
+          seenTexts.add(text);
+          const row={Danmaku:text};
+          if(hasAdSignal(item)) row.__l2sAd=true;
+          rows.push(row);
         }
-        return "";
-      };
+
+        if(rows.length<2) continue;
+
+        datasets.push({
+          type:"danmaku",
+          label:`Danmaku · ${rows.length} rows`,
+          headers:["Danmaku"],
+          rows,
+          score:1250+Math.min(rows.length,100)*9,
+          meta:{signature:"danmaku-stream:"+signature,rowCount:rows.length},
+          source:{
+            kind:"repeated",
+            parentSelector:cssPath(container),
+            childIndexes:items.map(item=>[...container.children].indexOf(item)),
+            itemTag:items[0]?.tagName?.toLowerCase()||"",
+            itemClasses:items[0]?[...items[0].classList].slice(0,3):[]
+          }
+        });
+        continue;
+      }
 
       const rows=items.map(item=>{
         const author=extractFirst(item,[
           '[class*="author"]','[class*="username"]','[class*="user-name"]',
-          '[class*="nickname"]','[class*="user"]','[data-testid*="author"]',
-          '[data-testid*="user"]'
+          '[class*="nickname"]','[class*="user"]','[class*="member"]',
+          '[class*="name"]','[data-testid*="author"]','[data-testid*="user"]'
         ],text=>text.length<=120);
 
         const date=extractFirst(item,[
           "time",'[class*="date"]','[class*="time"]','[class*="publish"]',
           '[class*="created"]','[class*="timestamp"]'
-        ],text=>text.length<=80);
+        ],text=>text.length<=100);
 
         const likes=extractFirst(item,[
           '[class*="like"]','[class*="vote"]','[class*="upvote"]',
-          '[aria-label*="like" i]','[aria-label*="赞" i]'
-        ],text=>text.length<=80);
+          '[aria-label*="like" i]','[aria-label*="赞" i]','[aria-label*="讚" i]'
+        ],text=>text.length<=100);
 
         const replies=extractFirst(item,[
           '[class*="repl"][class*="count"]','[class*="reply-count"]',
-          '[aria-label*="repl" i]','[aria-label*="回复" i]'
-        ],text=>text.length<=80);
+          '[aria-label*="repl" i]','[aria-label*="回复" i]','[aria-label*="回覆" i]'
+        ],text=>text.length<=100);
 
         const link=item.matches("a[href]")?item:item.querySelector("a[href]");
-
         const excluded=new Set([author,date,likes,replies].filter(Boolean));
         const candidates=[];
 
         const preferredSelectors=[
           '[class*="comment-content"]','[class*="comment-text"]',
-          '[class*="content"]','[class*="text"]',
+          '[class*="reply-content"]','[class*="reply-text"]',
+          '[class*="message"]','[class*="content"]','[class*="text"]',
           '[data-testid*="comment"]','[data-testid*="content"]',
           "p"
         ];
@@ -473,16 +560,26 @@ export function extractPageDatasets() {
         }
 
         if(!candidates.length){
-          for(const node of item.querySelectorAll("span,div")){
-            if(node.children.length>2||node.closest("button")) continue;
+          const leafNodes=[...item.querySelectorAll("span,div")]
+            .filter(node=>node.children.length<=1 && !node.closest("button"));
+          for(const node of leafNodes){
             const text=clean(node.innerText||node.textContent);
-            if(!text||text.length<3||text.length>1200||excluded.has(text)) continue;
+            if(!text||text.length<3||text.length>1600||excluded.has(text)) continue;
             candidates.push(text);
           }
         }
 
-        const comment=[...new Set(candidates)]
+        let comment=[...new Set(candidates)]
+          .filter(text=>text!==author && text!==date && text!==likes && text!==replies)
           .sort((a,b)=>b.length-a.length)[0]||"";
+
+        if(!comment){
+          let all=clean(item.innerText||item.textContent);
+          for(const excludedText of excluded){
+            if(excludedText) all=clean(all.replace(excludedText," "));
+          }
+          if(all.length>=3&&all.length<=2000) comment=all;
+        }
 
         const out={};
         if(author) out.Author=author;
@@ -493,16 +590,14 @@ export function extractPageDatasets() {
         if(link?.href) out.URL=link.href;
         if(hasAdSignal(item)) out.__l2sAd=true;
         return out;
-      }).filter(row=>Boolean(row.Comment) && Object.entries(row).some(([key,value])=>!key.startsWith("__")&&Boolean(value)));
+      }).filter(row=>Boolean(row.Comment));
 
       if(rows.length<2) continue;
 
       const headers=["Author","Comment","Date","Likes","Replies","URL"]
         .filter(header=>rows.some(row=>clean(row[header])));
-      if(!headers.includes("Comment")) continue;
-
-      const contentQuality=rows.filter(row=>clean(row.Comment).length>=8).length/rows.length;
-      if(contentQuality<0.5) continue;
+      const quality=rows.filter(row=>clean(row.Comment).length>=4).length/rows.length;
+      if(quality<0.45) continue;
 
       datasets.push({
         type:"comments",
@@ -514,16 +609,16 @@ export function extractPageDatasets() {
           if(row.__l2sAd) normalized.__l2sAd=true;
           return normalized;
         }),
-        score:2250+Math.min(rows.length,100)*18+contentQuality*250,
+        score:2300+Math.min(rows.length,100)*18+quality*260,
         meta:{
           signature:"comment-stream:"+signature,
           rowCount:rows.length,
-          contentQuality
+          contentQuality:quality
         },
         source:{
           kind:"repeated",
-          parentSelector:cssPath(parent),
-          childIndexes:items.map(item=>[...parent.children].indexOf(item)),
+          parentSelector:cssPath(container),
+          childIndexes:items.map(item=>[...container.children].indexOf(item)),
           itemTag:items[0]?.tagName?.toLowerCase()||"",
           itemClasses:items[0]?[...items[0].classList].slice(0,3):[]
         }
@@ -532,6 +627,7 @@ export function extractPageDatasets() {
   }
 
   // 6) Generic repeated cards/lists.
+
   const candidateParents=[...document.querySelectorAll("ul,ol,main,section,article,div")]
     .filter(parent=>visible(parent) && parent.children.length>=3 && parent.children.length<=100);
 

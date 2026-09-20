@@ -334,7 +334,145 @@ export function extractPageDatasets() {
     });
   });
 
-  // 3) Search-result style pages (Google/Bing/document directories/etc.).
+  // 3) X / Twitter post streams.
+  const xArticles=queryDeepAll('article[data-testid="tweet"]').filter(visible);
+  if(xArticles.length){
+    const xRows=[];
+    const xSources=[];
+    const seenPosts=new Set();
+
+    const metricText=(article,testId)=>{
+      let element=null;
+      try{
+        element=article.querySelector('[data-testid="'+testId+'"]');
+      }catch{}
+      if(!element) return "";
+
+      const text=clean(element.innerText||element.textContent);
+      if(text && text.length<=80) return text;
+
+      const aria=clean(element.getAttribute("aria-label"));
+      if(!aria) return "";
+
+      const numeric=aria.match(/(?:^|\s)([\d,.]+[KMB万萬千]?)(?=\s|$)/i);
+      return numeric ? numeric[1] : aria.slice(0,80);
+    };
+
+    for(const article of xArticles){
+      const userBox=article.querySelector('[data-testid="User-Name"]');
+      const userTexts=userBox
+        ? [...userBox.querySelectorAll("span")]
+            .map(node=>clean(node.innerText||node.textContent))
+            .filter(Boolean)
+        : [];
+
+      let handle=userTexts.find(text=>/^@[A-Za-z0-9_]{1,30}$/.test(text))||"";
+
+      if(!handle && userBox){
+        const profileLink=[...userBox.querySelectorAll('a[href^="/"]')]
+          .map(link=>link.getAttribute("href")||"")
+          .find(href=>/^\/[A-Za-z0-9_]{1,30}$/.test(href));
+        if(profileLink) handle="@"+profileLink.slice(1);
+      }
+
+      let author=userTexts.find(text=>
+        text!==handle &&
+        text!=="·" &&
+        !/^@[A-Za-z0-9_]{1,30}$/.test(text) &&
+        !/^\d+[smhdwy]$/i.test(text) &&
+        text.length<=120
+      )||"";
+
+      const postNode=article.querySelector('[data-testid="tweetText"]');
+      const post=clean(postNode?.innerText||postNode?.textContent);
+
+      const time=article.querySelector("time");
+      const date=clean(time?.getAttribute("datetime")||time?.innerText||time?.textContent);
+
+      let url="";
+      const statusAnchor=time?.closest('a[href*="/status/"]') ||
+        article.querySelector('a[href*="/status/"]');
+      if(statusAnchor){
+        try{url=new URL(statusAnchor.getAttribute("href")||statusAnchor.href,location.origin).href;}
+        catch{url=statusAnchor.href||"";}
+      }
+
+      const replies=metricText(article,"reply");
+      const reposts=metricText(article,"retweet");
+      const likes=metricText(article,article.querySelector('[data-testid="unlike"]')?"unlike":"like");
+
+      let views="";
+      const analytics=article.querySelector('a[href*="/analytics"]');
+      if(analytics){
+        views=clean(analytics.innerText||analytics.textContent);
+        if(!views){
+          const aria=clean(analytics.getAttribute("aria-label"));
+          const match=aria.match(/([\d,.]+[KMB万萬千]?)\s+views?/i);
+          views=match?.[1]||aria;
+        }
+      }
+
+      const media=[...article.querySelectorAll('[data-testid="tweetPhoto"] img,video[poster]')]
+        .map(node=>clean(node.currentSrc||node.src||node.getAttribute("poster")))
+        .filter(Boolean);
+      const mediaValue=[...new Set(media)].join(" | ");
+
+      if(!post && !mediaValue && !url) continue;
+
+      const identity=url || [handle,post,date].join("|");
+      if(!identity || seenPosts.has(identity)) continue;
+      seenPosts.add(identity);
+
+      const row={};
+      if(author) row.Author=author;
+      if(handle) row.Handle=handle;
+      if(post) row.Post=post;
+      if(date) row.Date=date;
+      if(replies) row.Replies=replies;
+      if(reposts) row.Reposts=reposts;
+      if(likes) row.Likes=likes;
+      if(views) row.Views=views;
+      if(url) row.URL=url;
+      if(mediaValue) row.Media=mediaValue;
+      if(hasAdSignal(article)) row.__l2sAd=true;
+
+      xRows.push(row);
+      xSources.push(cssPath(article));
+    }
+
+    if(xRows.length){
+      const headers=[
+        "Author","Handle","Post","Date",
+        "Replies","Reposts","Likes","Views","URL","Media"
+      ].filter(header=>xRows.some(row=>clean(row[header])));
+
+      datasets.push({
+        type:"social",
+        label:`X posts · ${xRows.length} rows`,
+        headers,
+        rows:xRows.map(row=>{
+          const normalized={};
+          headers.forEach(header=>normalized[header]=row[header]||"");
+          if(row.__l2sAd) normalized.__l2sAd=true;
+          return normalized;
+        }),
+        score:4100+Math.min(xRows.length,100)*18,
+        meta:{
+          signature:"x-post-stream",
+          platform:"x",
+          rowCount:xRows.length
+        },
+        source:{
+          kind:"search",
+          selectors:xSources.slice(0,150),
+          frameId:0
+        }
+      });
+    }
+  }
+
+  // 4) Search-result style pages (Google/Bing/document directories/etc.).
+
   const resultRows=[];
   const resultSources=[];
   const seenResultUrls=new Set();
@@ -416,7 +554,7 @@ export function extractPageDatasets() {
     });
   }
 
-  // 4) Discussion streams: discover broadly, classify as Comments or Danmaku after extraction.
+  // 5) Discussion streams: discover broadly, classify as Comments or Danmaku after extraction.
   const discussionContextPattern=/(comment|comments|comment-list|comment-section|discussion|reply|replies|reply-list|reply-item|root-reply|sub-reply|评论|評論|留言|评论区|評論區|评论列表|評論列表|回复|回覆|danmaku|danmu|bullet[-_ ]?comment|弹幕|彈幕)/i;
   const danmakuContextPattern=/(danmaku|danmu|bullet[-_ ]?comment|弹幕|彈幕|(^|[-_ ])dm([-_ ]|$))/i;
   const commentContextPattern=/(comment|comments|discussion|reply|replies|root-reply|sub-reply|评论|評論|留言|回复|回覆)/i;
@@ -655,7 +793,7 @@ export function extractPageDatasets() {
     }
   }
 
-  // 6) Generic repeated cards/lists.
+  // 7) Generic repeated cards/lists.
 
   const candidateParents=[...document.querySelectorAll("ul,ol,main,section,article,div")]
     .filter(parent=>visible(parent) && parent.children.length>=3 && parent.children.length<=100);

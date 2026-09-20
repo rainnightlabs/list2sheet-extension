@@ -330,3 +330,10 @@ footer a{color:var(--muted);text-decoration:none}
 .refineOption{margin-top:8px!important}
 .filterStageBar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:7px}
 .filterStageBar .muted{line-height:1.3}
+
+.topActions{display:flex;align-items:center;gap:7px}
+.languageSelect{
+  width:auto!important;min-width:92px;padding:4px 7px!important;
+  border-radius:999px!important;font-size:9.5px!important;background:#0b192a!important
+}
+.onboardingSteps i{font-style:normal}

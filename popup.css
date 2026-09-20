@@ -301,3 +301,27 @@ footer a{color:var(--muted);text-decoration:none}
 .emptyState strong{font-size:12px}
 .emptyState p{max-width:320px;margin:6px auto 0;color:var(--muted);font-size:10px;line-height:1.45}
 .emptyActions{display:grid;grid-template-columns:1.35fr 1fr;gap:8px;margin-top:12px}
+
+.onboardingCard{
+  position:relative;
+  border:2px solid #70b7f1!important;
+  box-shadow:0 0 0 3px rgba(143,198,255,.08),0 12px 28px rgba(0,0,0,.22);
+  background:linear-gradient(145deg,#163a5e,#0d2238)!important;
+}
+.onboardingTop strong{display:block;font-size:13px!important;line-height:1.25;margin-top:4px}
+.startHereBadge{
+  display:inline-flex;padding:3px 7px;border-radius:999px;
+  background:var(--accentStrong);color:#07101c;font-size:8px;font-weight:900;letter-spacing:.08em
+}
+.onboardingSteps span{border-color:#3b638c!important;background:#0a1d31!important;color:#cfe6fb!important}
+.keywordFilter{
+  margin-top:10px;padding:9px;border:1px solid var(--line);
+  border-radius:8px;background:#091827
+}
+.keywordFilterHead{display:flex;align-items:center;justify-content:space-between;margin-bottom:7px}
+.keywordFilterHead strong{font-size:10px}
+.keywordInput{
+  width:100%;height:32px;padding:0 8px;border:1px solid var(--line);
+  border-radius:7px;background:#081321;color:var(--text);font-size:10px
+}
+.keywordMode{margin-top:7px;padding:7px 8px;font-size:10px}

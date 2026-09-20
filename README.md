@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web tables, lists, and repeated cards into structured data.
 
-Repository status: **v0.6.3 stable pagination + live sync build**
+Repository status: **v0.7 manual picker + frame recovery build**
 
 ## Phase 1 features
 
@@ -22,6 +22,10 @@ Repository status: **v0.6.3 stable pagination + live sync build**
   - reorder columns
   - reset configuration
 - Highlight the detected source region on the active webpage
+- Manual Pick fallback:
+  - click one real table row or repeated card on the webpage
+  - infer the surrounding table/repeated group
+  - create a dataset even when automatic ranking is not useful
 - In-popup data preview:
   - explicit "Showing X of Y rows"
   - 12 / 50 / All preview modes
@@ -185,3 +189,12 @@ For Ajax pagination, List2Sheet clicks the control and waits until the selected 
 - The first scanned page becomes a soft expected page-size hint; a temporarily short render gets extra wait time.
 - Per-page row counts are recorded in pagination status (for example: 10 / 10 / 10 / 10 / 10).
 - The popup now re-reads background session state while pagination runs, so preview rows and headers update without requiring a manual re-scan.
+
+
+## v0.7 manual picker and frame recovery
+
+- Stale iframe ids during Ajax pagination are automatically rediscovered instead of immediately failing with "No frame with id ...".
+- Pagination controls are rediscovered across live frames and clicked with a fresh frame id.
+- "Pick data from page" provides a manual fallback when automatic detection is imperfect.
+- The picker stores the selected dataset in the same tab session, so reopening the popup immediately shows the picked data.
+- Press Escape while picking to cancel.

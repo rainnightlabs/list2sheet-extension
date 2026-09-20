@@ -152,3 +152,17 @@ Before public beta:
 - Paddle Live readiness.
 - Production license/refund behavior.
 - Release checklist passed on the QA matrix.
+
+
+## v0.13 release-candidate freeze
+
+The first public release candidate freezes new site adapters. Until the initial Chrome Web Store submission is complete, changes should be limited to:
+
+- regressions and correctness bugs
+- release packaging
+- privacy/permission alignment
+- store assets and listing copy
+- production licensing/payment readiness
+- severe usability issues
+
+New site adapters and semantic/AI filtering move to post-launch releases.

@@ -162,3 +162,6 @@ footer a{color:var(--muted);text-decoration:none}
 .paginationCard{margin-top:10px;padding:11px;border:1px solid var(--line);border-radius:10px;background:linear-gradient(180deg,#10213a,#0d1b2e)}
 .paginationFooter{display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-top:8px}
 .paginationFooter .fieldHint{margin:0;flex:1}
+
+.pickButton{width:100%;margin-top:8px;border-color:#42698f;background:#102039}
+.pickHint{margin:7px 2px 0!important;font-size:10px!important;line-height:1.35;color:var(--muted)!important}

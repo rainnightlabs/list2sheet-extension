@@ -39,7 +39,7 @@ async function renderStored() {
   }
 
   license.value = stored.license;
-  const state = await getProState();
+  const state = await getProState({forceVerify:true});
   if (state.pro) {
     active.hidden = false;
     form.hidden = true;

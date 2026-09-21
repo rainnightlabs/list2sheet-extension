@@ -56,7 +56,7 @@ For applicable pages:
 ## 4. License
 
 - [ ] Free state is correct on a fresh browser profile.
-- [ ] Valid Pro license activates.
+- [ ] Valid Pro license activates with the license code only.\n- [ ] Refunded purchase is rejected on the next online entitlement check.\n- [ ] Chargeback purchase is rejected on the next online entitlement check.\n- [ ] Temporary license-service outage keeps a recently verified Pro license usable within the offline grace period.
 - [ ] Invalid license is rejected cleanly.
 - [ ] Pro remains active after popup/browser restart according to cache rules.
 - [ ] Deactivate removes the local activation.

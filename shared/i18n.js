@@ -109,7 +109,9 @@ const MESSAGES={
     deactivate:"Deactivate on this browser",
     needLicense:"Need or lost your license?",
     openPricing:"Open Rainnight Labs pricing",
-    verifyFailed:"License verification failed. Check the license and try again.",\n    licenseRefunded:"This purchase has been refunded, so Pro access is no longer active.",\n    licenseChargeback:"This purchase is no longer eligible for Pro because of a chargeback.",
+    verifyFailed:"License verification failed. Check the license and try again.",
+    licenseRefunded:"This purchase has been refunded, so Pro access is no longer active.",
+    licenseChargeback:"This purchase is no longer eligible for Pro because of a chargeback.",
     activated:"List2Sheet Pro is active on this browser.",
     serviceUnavailable:"Could not reach the Rainnight Labs license service. Check your connection and try again.",
     licenseRemoved:"License removed from this browser."
@@ -222,7 +224,9 @@ const MESSAGES={
     deactivate:"在此浏览器停用",
     needLicense:"没有或遗失 License？",
     openPricing:"打开 Rainnight Labs 定价页",
-    verifyFailed:"License 验证失败，请检查 License 后重试。",\n    licenseRefunded:"该购买已退款，Pro 权限已撤销。",\n    licenseChargeback:"该购买发生拒付，已不再具备 Pro 权限。",
+    verifyFailed:"License 验证失败，请检查 License 后重试。",
+    licenseRefunded:"该购买已退款，Pro 权限已撤销。",
+    licenseChargeback:"该购买发生拒付，已不再具备 Pro 权限。",
     activated:"List2Sheet Pro 已在此浏览器激活。",
     serviceUnavailable:"无法连接 Rainnight Labs 授权服务，请检查网络后重试。",
     licenseRemoved:"已从此浏览器移除 License。"

@@ -146,6 +146,13 @@ Before public beta:
 - Browser extraction fixtures/tests.
 - Final Free/Pro gating review.
 
+### v0.13.1 — licensing hardening
+- Normal activation requires only the signed license code.
+- Purchase email is kept for recovery/issuance, not routine activation.
+- Online entitlement is rechecked against Paddle every 24 hours.
+- Approved full refunds and chargebacks revoke Pro access.
+- A bounded 7-day offline grace protects paid users during temporary service outages.
+
 ### v1.0 candidate
 - Chrome Web Store assets.
 - Permission/privacy review.

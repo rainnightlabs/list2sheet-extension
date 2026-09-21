@@ -56,7 +56,7 @@ For applicable pages:
 ## 4. License
 
 - [ ] Free state is correct on a fresh browser profile.
-- [ ] Valid Pro license activates.
+- [ ] Valid Pro license activates with the license code only.\n- [ ] Refunded purchase is rejected on the next online entitlement check.\n- [ ] Chargeback purchase is rejected on the next online entitlement check.\n- [ ] Temporary license-service outage keeps a recently verified Pro license usable within the offline grace period.
 - [ ] Invalid license is rejected cleanly.
 - [ ] Pro remains active after popup/browser restart according to cache rules.
 - [ ] Deactivate removes the local activation.
@@ -88,8 +88,11 @@ Then:
 
 ## 7. Store listing
 
-- [ ] Production icon set.
-- [ ] Store screenshots.
+- [ ] Production icon set includes a 128×128 PNG; also provide 16×16 and 48×48 extension icons in the package.
+- [ ] Manifest references the production icons.
+- [ ] At least one Chrome Web Store screenshot is prepared; target 1280×800.
+- [ ] Prefer 3–5 screenshots showing real workflows.
+- [ ] 440×280 small promotional tile is prepared.
 - [ ] English short description.
 - [ ] English long description.
 - [ ] Simplified Chinese listing copy if publishing localized listing text.

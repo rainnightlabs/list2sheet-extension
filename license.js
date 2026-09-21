@@ -3,18 +3,17 @@ import {
   getStoredLicense,
   saveLicense,
   clearLicense,
-  verifyLicense
+  verifyLicense,
+  getProState
 } from "./shared/license-state.js";
 
 let uiLanguage="en";
 const languageSelect=document.querySelector("#languageSelect");
 const form = document.querySelector("#licenseForm");
-const email = document.querySelector("#email");
 const license = document.querySelector("#license");
 const activate = document.querySelector("#activate");
 const message = document.querySelector("#message");
 const active = document.querySelector("#activeLicense");
-const activeEmail = document.querySelector("#activeEmail");
 const deactivate = document.querySelector("#deactivate");
 
 function tt(key,...args){return t(key,uiLanguage,...args);}
@@ -33,16 +32,28 @@ function showMessage(text,type="") {
 
 async function renderStored() {
   const stored = await getStoredLicense();
-  if (!stored) {
+  if (!stored?.license) {
     active.hidden = true;
     form.hidden = false;
     return;
   }
 
-  email.value = stored.email || "";
-  license.value = stored.license || "";
-  activeEmail.textContent = stored.email || "";
-  active.hidden = false;
+  license.value = stored.license;
+  const state = await getProState({forceVerify:true});
+  if (state.pro) {
+    active.hidden = false;
+    form.hidden = true;
+    return;
+  }
+
+  active.hidden = true;
+  form.hidden = false;
+  license.value = "";
+  if (state.reason === "refunded") {
+    showMessage(tt("licenseRefunded"),"error");
+  } else if (state.reason === "chargeback") {
+    showMessage(tt("licenseChargeback"),"error");
+  }
 }
 
 form.addEventListener("submit", async event => {
@@ -52,19 +63,26 @@ form.addEventListener("submit", async event => {
   message.hidden = true;
 
   try {
-    const result = await verifyLicense(email.value.trim(), license.value.trim());
+    const result = await verifyLicense(license.value.trim());
     if (!result.ok) {
-      showMessage(tt("verifyFailed"),"error");
+      if (result.unavailable) {
+        showMessage(tt("serviceUnavailable"),"error");
+      } else if (result.reason === "refunded") {
+        showMessage(tt("licenseRefunded"),"error");
+      } else if (result.reason === "chargeback") {
+        showMessage(tt("licenseChargeback"),"error");
+      } else {
+        showMessage(tt("verifyFailed"),"error");
+      }
       return;
     }
 
     await saveLicense({
-      email: email.value,
       license: license.value
     });
 
-    activeEmail.textContent = email.value.trim().toLowerCase();
     active.hidden = false;
+    form.hidden = true;
     showMessage(tt("activated"),"success");
   } catch (error) {
     showMessage(tt("serviceUnavailable"),"error");
@@ -76,9 +94,9 @@ form.addEventListener("submit", async event => {
 
 deactivate.addEventListener("click", async () => {
   await clearLicense();
-  email.value = "";
   license.value = "";
   active.hidden = true;
+  form.hidden = false;
   showMessage(tt("licenseRemoved"));
 });
 

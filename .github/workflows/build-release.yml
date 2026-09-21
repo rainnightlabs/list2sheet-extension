@@ -1,0 +1,28 @@
+name: Build List2Sheet Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build release ZIP
+        shell: pwsh
+        run: .\scripts\build-release.ps1
+
+      - name: Upload release ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: list2sheet-0.13.1
+          path: dist/list2sheet-0.13.1.zip
+          if-no-files-found: error
+          retention-days: 30

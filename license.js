@@ -4,6 +4,7 @@ import {
   saveLicense,
   clearLicense,
   verifyLicense,
+  releaseLicense,
   getProState
 } from "./shared/license-state.js";
 
@@ -30,6 +31,18 @@ function showMessage(text,type="") {
   message.textContent = text;
 }
 
+function showLicenseReason(reason) {
+  if (reason === "refunded") {
+    showMessage(tt("licenseRefunded"),"error");
+  } else if (reason === "chargeback") {
+    showMessage(tt("licenseChargeback"),"error");
+  } else if (reason === "activation_limit") {
+    showMessage(tt("activationLimit"),"error");
+  } else {
+    showMessage(tt("verifyFailed"),"error");
+  }
+}
+
 async function renderStored() {
   const stored = await getStoredLicense();
   if (!stored?.license) {
@@ -49,10 +62,8 @@ async function renderStored() {
   active.hidden = true;
   form.hidden = false;
   license.value = "";
-  if (state.reason === "refunded") {
-    showMessage(tt("licenseRefunded"),"error");
-  } else if (state.reason === "chargeback") {
-    showMessage(tt("licenseChargeback"),"error");
+  if (state.reason) {
+    showLicenseReason(state.reason);
   }
 }
 
@@ -67,12 +78,8 @@ form.addEventListener("submit", async event => {
     if (!result.ok) {
       if (result.unavailable) {
         showMessage(tt("serviceUnavailable"),"error");
-      } else if (result.reason === "refunded") {
-        showMessage(tt("licenseRefunded"),"error");
-      } else if (result.reason === "chargeback") {
-        showMessage(tt("licenseChargeback"),"error");
       } else {
-        showMessage(tt("verifyFailed"),"error");
+        showLicenseReason(result.reason);
       }
       return;
     }
@@ -93,11 +100,36 @@ form.addEventListener("submit", async event => {
 });
 
 deactivate.addEventListener("click", async () => {
-  await clearLicense();
-  license.value = "";
-  active.hidden = true;
-  form.hidden = false;
-  showMessage(tt("licenseRemoved"));
+  const stored = await getStoredLicense();
+  if (!stored?.license) {
+    await clearLicense();
+    license.value = "";
+    active.hidden = true;
+    form.hidden = false;
+    showMessage(tt("licenseRemoved"));
+    return;
+  }
+
+  deactivate.disabled = true;
+  message.hidden = true;
+
+  try {
+    const released = await releaseLicense(stored.license);
+    if (!released.ok && released.unavailable) {
+      showMessage(tt("releaseUnavailable"),"error");
+      return;
+    }
+
+    await clearLicense();
+    license.value = "";
+    active.hidden = true;
+    form.hidden = false;
+    showMessage(tt("licenseRemoved"));
+  } catch {
+    showMessage(tt("releaseUnavailable"),"error");
+  } finally {
+    deactivate.disabled = false;
+  }
 });
 
 languageSelect.addEventListener("change",async()=>{

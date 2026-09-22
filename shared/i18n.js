@@ -112,6 +112,8 @@ const MESSAGES={
     verifyFailed:"License verification failed. Check the license and try again.",
     licenseRefunded:"This purchase has been refunded, so Pro access is no longer active.",
     licenseChargeback:"This purchase is no longer eligible for Pro because of a chargeback.",
+    activationLimit:"This license is already active on 3 installations. Deactivate it on another browser before activating here.",
+    releaseUnavailable:"Could not release this browser slot. Keep the license active here and try deactivating again when the license service is reachable.",
     activated:"List2Sheet Pro is active on this browser.",
     serviceUnavailable:"Could not reach the Rainnight Labs license service. Check your connection and try again.",
     licenseRemoved:"License removed from this browser."
@@ -227,6 +229,8 @@ const MESSAGES={
     verifyFailed:"License 验证失败，请检查 License 后重试。",
     licenseRefunded:"该购买已退款，Pro 权限已撤销。",
     licenseChargeback:"该购买发生拒付，已不再具备 Pro 权限。",
+    activationLimit:"此 License 已在 3 个安装实例上激活。请先在其他浏览器中停用，再在这里激活。",
+    releaseUnavailable:"暂时无法释放当前浏览器的激活名额。请保持当前授权，待授权服务恢复后再次停用。",
     activated:"List2Sheet Pro 已在此浏览器激活。",
     serviceUnavailable:"无法连接 Rainnight Labs 授权服务，请检查网络后重试。",
     licenseRemoved:"已从此浏览器移除 License。"

@@ -24,7 +24,7 @@ jobs:
       - name: Upload release ZIP
         uses: actions/upload-artifact@v4
         with:
-          name: list2sheet-0.13.1
-          path: dist/list2sheet-0.13.1.zip
+          name: list2sheet-release
+          path: dist/list2sheet-*.zip
           if-no-files-found: error
           retention-days: 30

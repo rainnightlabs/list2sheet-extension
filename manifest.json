@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "List2Sheet",
-  "version": "0.13.1",
+  "version": "0.13.2",
   "description": "Turn web posts, comments, products, lists, search results, and tables into clean spreadsheet data.",
   "icons": {
     "16": "icons/icon16.png",

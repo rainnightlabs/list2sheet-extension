@@ -137,7 +137,21 @@ languageSelect.addEventListener("change",async()=>{
   await applyLanguage(lang);
 });
 
+let lastForegroundVerifyAt = 0;
+
+async function reverifyWhenVisible() {
+  if (document.visibilityState !== "visible") return;
+  const now = Date.now();
+  // Avoid duplicate focus + visibility events firing back-to-back.
+  if (now - lastForegroundVerifyAt < 1000) return;
+  lastForegroundVerifyAt = now;
+  await renderStored();
+}
+
+document.addEventListener("visibilitychange", reverifyWhenVisible);
+window.addEventListener("focus", reverifyWhenVisible);
+
 (async()=>{
   await applyLanguage(await getUiLanguage());
-  await renderStored();
+  await reverifyWhenVisible();
 })();

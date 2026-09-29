@@ -2,7 +2,7 @@ const VERIFY_URL = "https://www.rainnightlabs.com/api/license-verify/";
 const RELEASE_URL = "https://www.rainnightlabs.com/api/license-release/";
 const STORAGE_KEY = "list2sheet_license_v1";
 const INSTALLATION_KEY = "list2sheet_installation_id_v1";
-const REVERIFY_MS = 24 * 60 * 60 * 1000;
+const REVERIFY_MS = 15 * 60 * 1000;
 const OFFLINE_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
 
 function createInstallationId() {
@@ -123,6 +123,15 @@ export async function getProState({forceVerify = false} = {}) {
 
     if (result.unavailable && age < OFFLINE_GRACE_MS) {
       return {pro:true,license:stored.license,cached:true,offlineGrace:true};
+    }
+
+    // A hard server-side invalidation (for example refund or chargeback)
+    // should also release this installation slot. The release endpoint only
+    // verifies the signed license, so it still works after entitlement loss.
+    try {
+      await releaseLicense(stored.license);
+    } catch {
+      // Best effort only; entitlement invalidation must not depend on Redis.
     }
 
     await clearLicense();

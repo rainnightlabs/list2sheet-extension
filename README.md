@@ -2,7 +2,7 @@
 
 **List2Sheet** is a browser extension by **Rainnight Labs** for turning web posts, comments, products, search results, lists, and tables into clean spreadsheet data.
 
-Repository status: **v0.13.2 release candidate build**
+Repository status: **v0.13.4 public release build**
 
 ## Phase 1 features
 
@@ -80,7 +80,7 @@ Repository status: **v0.13.2 release candidate build**
 - Rainnight Labs license activation
 - License verification against:
   - `https://www.rainnightlabs.com/api/license-verify/`
-- 24-hour online entitlement recheck with a bounded 7-day offline grace for previously verified licenses\n- Stable random installation UUID stored locally\n- Up to 3 active installations per license when server-side activation storage is enabled\n- Deactivating Pro releases the current browser installation slot
+- 15-minute online entitlement recheck with a bounded 7-day offline grace for previously verified licenses\n- Stable random installation UUID stored locally\n- Up to 3 active installations per license when server-side activation storage is enabled\n- Deactivating Pro releases the current browser installation slot
 
 ## Load locally in Chrome
 
